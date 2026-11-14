@@ -3,26 +3,34 @@
 
 /// Tira pontuação e espaços e põe as letras em maiúsculas.
 pub fn limpar(texto: &str) -> String {
-    texto.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| c.to_ascii_uppercase()).collect()
+    texto
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
 }
 
 /// Confere tamanho, caracteres e os dois dígitos verificadores.
 pub fn valido(cnpj: &str) -> bool {
+    const PESOS: [u32; 13] = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
     let b = cnpj.as_bytes();
     if b.len() != 14 {
         return false;
     }
-    let corpo_ok = b[..12].iter().all(|c| c.is_ascii_digit() || c.is_ascii_uppercase());
-    let dv_ok = b[12..].iter().all(|c| c.is_ascii_digit());
+    let corpo_ok = b[..12]
+        .iter()
+        .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase());
+    let dv_ok = b[12..].iter().all(u8::is_ascii_digit);
     if !corpo_ok || !dv_ok || b.iter().all(|c| *c == b[0]) {
         return false;
     }
-    const PESOS: [u32; 13] = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
     for n in [12usize, 13] {
-        let soma: u32 = (0..n).map(|i| (b[i] as u32 - 48) * PESOS[13 - n + i]).sum();
+        let soma: u32 = (0..n)
+            .map(|i| (u32::from(b[i]) - 48) * PESOS[13 - n + i])
+            .sum();
         let resto = soma % 11;
         let esperado = if resto < 2 { 0 } else { 11 - resto };
-        if b[n] as u32 - 48 != esperado {
+        if u32::from(b[n]) - 48 != esperado {
             return false;
         }
     }
@@ -59,12 +67,13 @@ pub fn sem_porcento(texto: &str) -> String {
     let mut saida = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&texto[i + 1..i + 3], 16) {
-                saida.push(v);
-                i += 3;
-                continue;
-            }
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&texto[i + 1..i + 3], 16)
+        {
+            saida.push(v);
+            i += 3;
+            continue;
         }
         saida.push(b[i]);
         i += 1;
