@@ -1,15 +1,14 @@
 [package]
 name = "pix-brcode"
-version = "1.0.0"
-edition = "2024"
-description = "Modelo da Wortic: BR Code do Pix estático em Rust (monta, lê, confere chaves e gera o QR), sem rede e sem banco"
-license = "MIT"
+description = "Ferramentas Wortic: BR Code do Pix estático (monta, lê, confere chaves e gera o QR), sem rede e sem banco (subcomando `wortic pix`)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
-qrcodegen = "1.8"
-tiny_http = "0.12"
-
-[profile.release]
-opt-level = "s"
-lto = true
-strip = true
+wortic-base.workspace = true
+qrcodegen.workspace = true
+tiny_http.workspace = true

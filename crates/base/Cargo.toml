@@ -1,0 +1,12 @@
+[package]
+name = "wortic-base"
+description = "Ferramentas Wortic: a base comum (jsonW-texto, configuração com esquema, resposta em JSON ou jsonW, arquivo .jsw)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+build = "build.rs"
+
+[dependencies]

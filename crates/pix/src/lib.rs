@@ -5,6 +5,7 @@
 //! conciliação e checkout ficam fora desta biblioteca.
 
 pub mod chave;
+pub mod cli;
 pub mod cobranca;
 pub mod crc;
 pub mod erro;

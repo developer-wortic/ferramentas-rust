@@ -5,6 +5,7 @@
 //! nota de 0 a 100 com o motivo). Funciona com `OpenAI`, `Anthropic`, Google (`Gemini`), `Groq` e `OpenRouter`.
 
 pub mod atendimento;
+pub mod cli;
 pub mod configuracao;
 pub mod erro;
 pub mod guarda;

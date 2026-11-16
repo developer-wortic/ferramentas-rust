@@ -71,6 +71,7 @@
 
 pub mod atribuicao;
 pub mod captura;
+pub mod cli;
 pub mod consentimento;
 pub mod cookie;
 pub mod dados;

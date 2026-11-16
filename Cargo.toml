@@ -1,0 +1,39 @@
+# Ferramentas abertas da Wortic em Rust, num projeto só: uma biblioteca por ferramenta, a base comum (jsonW) e
+# um binário único, `wortic`, com um subcomando por ferramenta.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+default-members = ["crates/*"]
+
+[workspace.package]
+version = "2.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/developer-wortic/ferramentas-rust"
+authors = ["Wortic <dev@wortic.com.br>"]
+
+[workspace.dependencies]
+# as ferramentas
+wortic-base = { path = "crates/base" }
+cadastro-cnpj = { path = "crates/cnpj" }
+chatbot-prospeccao = { path = "crates/chatbot" }
+pix-brcode = { path = "crates/pix" }
+rastreio-capi = { path = "crates/rastreio" }
+# de fora, uma versão para todas
+base64 = "0.22"
+hmac = "0.12"
+qrcodegen = "1.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tiny_http = "0.12"
+toml = "0.8"
+ureq = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+panic = "unwind"
