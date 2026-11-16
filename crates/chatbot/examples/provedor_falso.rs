@@ -2,8 +2,8 @@
 //! Responde um roteiro fixo no formato de streaming da `Responses API` da `OpenAI`, e um resumo de lead quando pedido.
 //! Não é um modelo de IA. Serve para ver a tela e o widget funcionando, e para as capturas do README.
 //!
-//! Uso: `cargo run --example provedor_falso`. Ele imprime o endereço; depois, em outro terminal:
-//! `CHATBOT_BASE_URL=<endereço>/v1 CHATBOT_CHAVE=demo cargo run`.
+//! Uso: `cargo run -p chatbot-prospeccao --example provedor_falso`. Ele imprime o endereço; depois, em outro terminal,
+//! sobe o chatbot apontado para ele: `CHATBOT_BASE_URL=<endereço>/v1 CHATBOT_CHAVE=demo wortic chatbot`.
 
 #[allow(dead_code)]
 #[path = "../tests/comum/falso.rs"]

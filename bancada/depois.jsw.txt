@@ -1,0 +1,15 @@
+{rotulo:"depois",ferramenta:"cnpj",caminho:"/",pedidos:2000,erros:0,segundos:0.032,por_segundo:62156,p50_us:38,p99_us:225}
+{rotulo:"depois",ferramenta:"cnpj",caminho:"/api/config",pedidos:2000,erros:0,segundos:0.021,por_segundo:96749,p50_us:24,p99_us:227}
+{rotulo:"depois",ferramenta:"cnpj",caminho:"/api/empresa/11111111111111",pedidos:2000,erros:0,segundos:0.017,por_segundo:117709,p50_us:23,p99_us:103}
+{rotulo:"depois",ferramenta:"cnpj",partida_ms:14,pico_memoria_kb:4648}
+{rotulo:"depois",ferramenta:"chatbot",caminho:"/",pedidos:2000,erros:0,segundos:0.082,por_segundo:24374,p50_us:62,p99_us:2037}
+{rotulo:"depois",ferramenta:"chatbot",caminho:"/api/config",pedidos:2000,erros:0,segundos:0.058,por_segundo:34617,p50_us:65,p99_us:1279}
+{rotulo:"depois",ferramenta:"chatbot",caminho:"/widget.js",pedidos:2000,erros:0,segundos:0.052,por_segundo:38482,p50_us:60,p99_us:1145}
+{rotulo:"depois",ferramenta:"chatbot",partida_ms:7,pico_memoria_kb:5740}
+{rotulo:"depois",ferramenta:"pix",caminho:"/",pedidos:2000,erros:0,segundos:0.018,por_segundo:108654,p50_us:31,p99_us:102}
+{rotulo:"depois",ferramenta:"pix",caminho:"/api/config",pedidos:2000,erros:0,segundos:0.015,por_segundo:136996,p50_us:23,p99_us:75}
+{rotulo:"depois",ferramenta:"pix",caminho:"/api/gerar?chave=teste%40exemplo.com.br&nome=Loja%20Exemplo&cidade=Porto%20Alegre&valor=12.50&txid=PEDIDO42",pedidos:2000,erros:0,segundos:0.418,por_segundo:4782,p50_us:702,p99_us:2267}
+{rotulo:"depois",ferramenta:"pix",partida_ms:7,pico_memoria_kb:6032}
+{rotulo:"depois",ferramenta:"rastreio",caminho:"/",pedidos:2000,erros:0,segundos:0.032,por_segundo:62516,p50_us:50,p99_us:185}
+{rotulo:"depois",ferramenta:"rastreio",caminho:"/r?utm_source=facebook&utm_medium=cpc&utm_campaign=bf&fbclid=AbC123",pedidos:2000,erros:0,segundos:0.026,por_segundo:77462,p50_us:45,p99_us:139}
+{rotulo:"depois",ferramenta:"rastreio",partida_ms:8,pico_memoria_kb:5100}

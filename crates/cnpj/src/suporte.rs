@@ -72,7 +72,16 @@ pub struct Visto {
 
 /// GET de verdade contra um endereço local. Resposta de erro (4xx e 5xx) também volta como `Visto`.
 pub fn pedir(url: &str) -> Visto {
-    let resposta = match ureq::get(url).timeout(Duration::from_secs(5)).call() {
+    pedir_com(url, &[])
+}
+
+/// Igual a `pedir`, mandando os cabeçalhos dados (por exemplo `accept`).
+pub fn pedir_com(url: &str, cabecalhos: &[(&str, &str)]) -> Visto {
+    let mut pedido = ureq::get(url).timeout(Duration::from_secs(5));
+    for (nome, valor) in cabecalhos {
+        pedido = pedido.set(nome, valor);
+    }
+    let resposta = match pedido.call() {
         Ok(r) => r,
         Err(e) => e.into_response().expect("resposta do servidor local"),
     };

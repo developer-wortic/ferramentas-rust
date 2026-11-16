@@ -1,7 +1,7 @@
 //! `OpenAI` pela Responses API: `POST {base}/responses` com `stream: true` (SSE).
 //! A doc atual recomenda a Responses API para apps de texto novos. Cabeçalho: `Authorization: Bearer`.
 
-use serde_json::{Value, json}; // borda-json: corpo e eventos trocados com a API da OpenAI (terceiro)
+use serde_json::{Value, json}; // borda-json: API do provedor (OpenAI: corpo e eventos)
 
 use super::{
     Ajustes, Conversa, MAX_TOKENS, Passo, Provedor, ler_fluxo, mensagem_de_erro, papel_padrao,

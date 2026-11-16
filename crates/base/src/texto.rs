@@ -28,6 +28,10 @@ const TAMANHO_ERRO: usize = 320;
 /// O texto não casa com o esquema (tipo errado, campo obrigatório faltando, sintaxe), com a razão da libjsonw.
 pub fn para_json(esquema: &str, texto: &str) -> Result<String, String> {
     let esquema = CString::new(esquema).map_err(|_| "esquema com byte nulo".to_string())?;
+    // a libjsonw recebe o tamanho, mas a mensagem de erro dela olha o trecho seguinte: o 0 no fim evita ler lixo
+    let mut com_nulo = Vec::with_capacity(texto.len() + 1);
+    com_nulo.extend_from_slice(texto.as_bytes());
+    com_nulo.push(0);
     let mut cap = (texto.len() * 2).max(4096);
     loop {
         let mut saida = vec![0u8; cap];
@@ -36,7 +40,7 @@ pub fn para_json(esquema: &str, texto: &str) -> Result<String, String> {
         let n = unsafe {
             jsonw_texto_para_json(
                 esquema.as_ptr(),
-                texto.as_ptr().cast(),
+                com_nulo.as_ptr().cast(),
                 texto.len(),
                 saida.as_mut_ptr().cast(),
                 cap,
@@ -120,7 +124,7 @@ pub fn de_json(json: &str) -> String {
 }
 
 /// Chave que pode ir sem aspas: letra ou `_`, depois letras, dígitos ou `_`; nunca `true`, `false` ou `null`.
-fn identificador(chave: &str) -> bool {
+pub(crate) fn identificador(chave: &str) -> bool {
     let mut letras = chave.bytes();
     matches!(letras.next(), Some(b'a'..=b'z' | b'A'..=b'Z' | b'_'))
         && letras.all(|b| b.is_ascii_alphanumeric() || b == b'_')
@@ -176,7 +180,10 @@ mod testes {
     fn le_comentario_virgula_sobrando_e_dinheiro() {
         let texto = "// comentário\n{\n  nome: \"Loja\",\n  preco: 12,50 BRL,\n  perguntas: [\"a\", \"b\",],\n}\n";
         let json = para_json("nome:texto,preco:dinheiro,perguntas:lista<texto>", texto).unwrap();
-        assert_eq!(json, r#"{"nome":"Loja","preco":"12.50 BRL","perguntas":["a","b"]}"#);
+        assert_eq!(
+            json,
+            r#"{"nome":"Loja","preco":"12.50 BRL","perguntas":["a","b"]}"#
+        );
     }
 
     #[test]
@@ -198,5 +205,14 @@ mod testes {
         let grande = "x".repeat(300_000);
         let json = para_json("t:texto", &format!("{{t:\"{grande}\"}}")).unwrap();
         assert_eq!(json.len(), grande.len() + 8);
+    }
+
+    #[test]
+    fn erro_no_fim_do_texto_nao_le_alem_dele() {
+        // fatia de um texto maior: sem o 0 no fim, a razão citava os bytes seguintes
+        let maior = "empresa = 1LIXO-QUE-NAO-E-DO-TEXTO";
+        let erro = para_json("empresa:i64", &maior[..11]).unwrap_err();
+        assert!(!erro.contains("LIXO"), "{erro}");
+        assert!(erro.chars().all(|c| !c.is_control()), "{erro:?}");
     }
 }

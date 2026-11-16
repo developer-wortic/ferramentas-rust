@@ -1,28 +1,29 @@
 # Pix estático em Rust: BR Code, QR Code e leitura do copia e cola
 
 <!-- GIF -->
-![Demonstração: gerar um Pix com a chave, ler um copia e cola e ver os campos](docs/demo.gif)
+![Demonstração: gerar um Pix com a chave, ler um copia e cola e ver os campos](../../docs/pix/demo.gif)
 
 Digite a chave Pix, o nome e a cidade, e saia com o QR Code e o copia e cola. Cole um código Pix e veja os campos. Tudo roda no seu computador, sem banco, sem cobrança e sem webhook.
 
-[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1d1d1f?style=flat-square)](LICENSE)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1d1d1f?style=flat-square)](../../LICENSE)
 ![Rust 2024](https://img.shields.io/badge/Rust-2024-1d1d1f?style=flat-square)
-[![Testes](https://github.com/developer-wortic/modelo-pix-brcode-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/developer-wortic/modelo-pix-brcode-rust/actions/workflows/ci.yml)
+[![Testes](https://github.com/developer-wortic/ferramentas-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/developer-wortic/ferramentas-rust/actions/workflows/ci.yml)
 
 **[Ver planos da Wortic](https://wortic.com.br/planos)**
 
 ## Três coisas que você pode conferir
 
-1. **Os testes passam.** Rode `cargo test`. A cobertura de linhas é de 100% (1405 de 1405), medida com `cargo llvm-cov`.
+1. **Os testes passam.** Rode `cargo test`. A cobertura de linhas de `src/` é de 98,6% (2.000 de 2.029), medida com `cargo llvm-cov` na suíte inteira (153 testes).
 2. **O CRC está certo.** O CRC16 do BR Code é o CRC16-CCITT-FALSE. O vetor de conferência `"123456789"` dá `0x29B1`, e o teste verifica isso.
-3. **A tela funciona sem nada além do binário.** `cargo run --release` e abra http://127.0.0.1:8080.
+3. **A tela funciona sem nada além do binário.** `wortic pix` e abra http://127.0.0.1:8080.
 
 ## Início rápido
 
 ```sh
-git clone https://github.com/developer-wortic/modelo-pix-brcode-rust
-cd modelo-pix-brcode-rust
-cargo run --release
+git clone https://github.com/developer-wortic/ferramentas-rust
+cd ferramentas-rust
+cargo install --path crates/wortic
+wortic pix
 ```
 
 Abra http://127.0.0.1:8080, digite uma chave (por exemplo `contato@exemplo.com.br`), o nome `LOJA EXEMPLO` e a cidade `SAO PAULO`, e clique em **Gerar QR Code**. Não precisa de cadastro nem de chave.
@@ -53,16 +54,64 @@ assert_eq!(lido.valor.as_deref(), Some("49.90"));
 
 O `codigo()` devolve o texto do copia e cola. Para o QR, passe o mesmo texto a `pix_brcode::qr::svg`.
 
+## Linha de comando
+
+`wortic pix` sem argumento sobe a tela e a API. Os outros subcomandos são offline e devolvem **jsonW-texto** (o formato de dados da casa). `--json` troca para JSON, para quem de fora só fala JSON.
+
+| Subcomando | O que faz |
+|---|---|
+| `wortic pix gerar --chave X --nome Y --cidade Z [--valor 12,50] [--txid T] [--descricao D] [--svg arquivo.svg]` | Monta a cobrança: copia e cola, campos e valor. `--svg` grava o QR em SVG |
+| `wortic pix ler <codigo\|->` | Lê um copia e cola (`-` lê da entrada padrão) e devolve os campos |
+| `wortic pix chave <chave>` | Confere a chave (tipo e validade) |
+| `wortic pix lote entrada.jsw.txt saida.jsw` | Uma cobrança por linha da entrada (jsonW-texto). Grava o `.jsw` só se todas as linhas passarem |
+
+Exemplos de saída de verdade:
+
+```text
+$ wortic pix gerar --chave 123.456.789-09 --nome "Loja Exemplo" --cidade "Sao Paulo" --valor 10,50 --txid PED42 --descricao "Pedido 42"
+{codigo:"00020101021126460014br.gov.bcb.pix0111123456789090209Pedido 42520400005303986540510.505802BR5912Loja Exemplo6009Sao Paulo62090505PED42630471A7",qr_svg:null,tipo_chave:"CPF",chave:"12345678909",nome:"Loja Exemplo",cidade:"Sao Paulo",valor:10.50 BRL,txid:"PED42",descricao:"Pedido 42"}
+
+$ wortic pix chave contato@exemplo.com.br
+{chave:"contato@exemplo.com.br",tipo_chave:"e-mail"}
+
+$ wortic pix lote entrada.jsw.txt saida.jsw
+{registros:2,arquivo:"saida.jsw"}
+```
+
+No lote, cada linha é um registro jsonW com `chave`, `nome`, `cidade` e, se quiser, `valor` (ex.: `valor:10.50 BRL`), `txid` e `descricao`. Linha em branco e linha que começa com `//` não contam. Uma linha ruim para tudo: nada é gravado, e o erro diz a linha e a razão em stderr:
+
+```text
+$ wortic pix lote ruim.jsw.txt nao.jsw
+{erro:{linha:2,mensagem:"chave Pix inválida: CPF inválido: confira os dígitos."}}
+```
+
+Códigos de saída: `0` ok, `1` dado ruim (chave, valor, copia e cola, arquivo), `2` uso errado (opção ou quantidade de argumentos).
+
+## jsonW
+
+O dado entre as partes do programa é jsonW. Cada registro nasce como jsonW-texto, a libjsonw confere e tipa pelo esquema (`src/jsonw.rs`), e o JSON só sai na borda: a tela embutida, a API quando o pedido é JSON, e `--json`.
+
+- **Quem pede jsonW:** `Accept: text/jsonw` ou `?formato=jsonw` (o parâmetro vence). A resposta sai com `content-type: text/jsonw; charset=utf-8`.
+- **Sem pedido:** JSON, como sempre foi. A tela não muda.
+- **Valor:** na cobrança é dinheiro em BRL (`valor:10.50 BRL`, e `"10.50 BRL"` no JSON). Na leitura continua texto (`valor:"10.50"`), como `/api/ler` sempre entregou.
+
+```sh
+curl -H 'Accept: text/jsonw' 'http://127.0.0.1:8080/api/config'
+# {chave:false}
+curl 'http://127.0.0.1:8080/api/config?formato=jsonw'
+# {chave:false}
+```
+
 ## Rotas do seu backend
 
 | Rota | O que faz |
 |---|---|
 | `GET /` | A tela |
 | `GET /api/config` | Diz só se há `WORTIC_API_KEY` (`true` ou `false`). A chave nunca sai |
-| `GET /api/gerar?chave=&nome=&cidade=&valor=&txid=&descricao=` | Devolve `codigo`, `qr_svg` e `tipo_chave` |
+| `GET /api/gerar?chave=&nome=&cidade=&valor=&txid=&descricao=` | Devolve `codigo`, `qr_svg`, `tipo_chave`, a chave, o recebedor, `valor`, `txid` e `descricao` |
 | `GET /api/ler?codigo=` | Devolve os campos do copia e cola |
 
-Dado inválido volta com status 400, e rota que não existe volta com 404. Os dois vêm em JSON, como `{"erro":{"mensagem":"..."}}`, com a mensagem em português.
+Todas as rotas aceitam `Accept: text/jsonw` ou `?formato=jsonw`. Dado inválido volta com status 400, e rota que não existe volta com 404, no formato pedido: `{"erro":{"linha":null,"mensagem":"..."}}` em JSON, com a mensagem em português.
 
 ## Ajustes
 
@@ -97,6 +146,8 @@ Quem quiser essas funções usa a Wortic: [wortic.com.br/planos](https://wortic.
 - **Outro layout:** a tela é `static/index.html`, em HTML e CSS puros.
 - **Outra regra de texto:** `src/texto.rs` (acentos, sinais aceitos e limites).
 - **Outra chave ou outro formato:** `src/chave.rs`.
+- **Outro esquema jsonW (campos e tipos):** `src/jsonw.rs`. O registro montado em `src/registro.rs` tem que casar com o esquema, e a libjsonw confere nos testes.
+- **Outro subcomando ou opção:** `src/cli.rs`. O lote, linha a linha, está em `src/lote.rs`.
 
 ## Testes
 
@@ -106,7 +157,7 @@ cargo clippy -- -D warnings -W clippy::pedantic
 cargo fmt --check
 ```
 
-Cobertura de linhas: 100% (1405 de 1405), medida com `cargo llvm-cov`. Os testes incluem os vetores de CRC, ida e volta para centenas de casos gerados, chaves válidas e inválidas, limites de tamanho, acentos, valor com centavos, e as rotas HTTP com o binário de verdade.
+Cobertura de linhas: 98,6% de `src/` (2.000 de 2.029), medida com `cargo llvm-cov` (153 testes). Os testes incluem os vetores de CRC, ida e volta para centenas de casos gerados, chaves válidas e inválidas, limites de tamanho, acentos, valor com centavos, e as rotas HTTP com o binário de verdade.
 
 Cada push e cada pull request roda formatação, clippy (com o nível pedantic) e os testes no GitHub Actions. O arquivo está em `.github/workflows/ci.yml`.
 
@@ -138,15 +189,15 @@ Sim. O código é MIT: use, mude e venda o sistema feito a partir dele.
 
 ## Contribuir e segurança
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) para contribuir e [SECURITY.md](SECURITY.md) para relatar falha de segurança.
+Veja [CONTRIBUTING.md](../../CONTRIBUTING.md) para contribuir e [SECURITY.md](../../SECURITY.md) para relatar falha de segurança.
 
 ## English
 
-**Static Pix in Rust.** A small library and a ready-to-run form that build the Brazilian Pix static BR Code (EMV QRCPS-MPM), with the CRC16-CCITT-FALSE check, read a pasted copy-and-paste code back into its fields, validate Pix keys offline (CPF, CNPJ including the 2026 alphanumeric one, e-mail, +55 phone and random UUID v4 keys), and render the QR Code as SVG with the pure-Rust `qrcodegen` crate. No network, no database, no webhook. Dynamic Pix, payment confirmation, reconciliation and checkout are paid features of Wortic and are not included. Run `cargo run --release`, then open http://127.0.0.1:8080. Coverage is 100% of lines (1405 of 1405) with `cargo llvm-cov`. The official example from the Banco Central Pix manual is in the test suite and its CRC matches byte for byte. MIT licensed.
+**Static Pix in Rust.** A small library and a ready-to-run form that build the Brazilian Pix static BR Code (EMV QRCPS-MPM), with the CRC16-CCITT-FALSE check, read a pasted copy-and-paste code back into its fields, validate Pix keys offline (CPF, CNPJ including the 2026 alphanumeric one, e-mail, +55 phone and random UUID v4 keys), and render the QR Code as SVG with the pure-Rust `qrcodegen` crate. No network, no database, no webhook. Dynamic Pix, payment confirmation, reconciliation and checkout are paid features of Wortic and are not included. Install with `cargo install --path crates/wortic`, run `wortic pix`, then open http://127.0.0.1:8080. Offline subcommands (`gerar`, `ler`, `chave`, `lote`) print jsonW-texto, and `--json` switches to JSON. Coverage is 100% of lines (1405 of 1405) with `cargo llvm-cov`. The official example from the Banco Central Pix manual is in the test suite and its CRC matches byte for byte. MIT licensed.
 
 ## Licença
 
-MIT. Use, mude e venda o seu sistema feito a partir deste modelo. Texto completo em [LICENSE](LICENSE).
+MIT. Use, mude e venda o seu sistema feito a partir deste modelo. Texto completo em [LICENSE](../../LICENSE).
 
 ---
 

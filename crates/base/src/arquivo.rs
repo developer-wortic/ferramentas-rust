@@ -18,6 +18,10 @@ pub fn gravar<'a>(
     let destino = caminho
         .to_str()
         .ok_or_else(|| "caminho fora de UTF-8".to_string())?;
+    if let Some(pasta) = caminho.parent().filter(|p| !p.as_os_str().is_empty()) {
+        fs::create_dir_all(pasta)
+            .map_err(|e| format!("não consegui criar {}: {e}", pasta.display()))?;
+    }
     let mut escritor = crate::abi::Escritor::criar(destino, esquema)?;
     let mut n = 0u64;
     for registro in registros {
@@ -35,7 +39,10 @@ pub fn gravar<'a>(
 ///
 /// # Errors
 /// Como em [`gravar`].
-pub fn bytes<'a>(esquema: &str, registros: impl IntoIterator<Item = &'a str>) -> Result<Vec<u8>, String> {
+pub fn bytes<'a>(
+    esquema: &str,
+    registros: impl IntoIterator<Item = &'a str>,
+) -> Result<Vec<u8>, String> {
     let temporario = Temporario::novo();
     gravar(&temporario.0, esquema, registros)?;
     fs::read(&temporario.0).map_err(|e| e.to_string())
@@ -45,7 +52,10 @@ pub fn bytes<'a>(esquema: &str, registros: impl IntoIterator<Item = &'a str>) ->
 ///
 /// # Errors
 /// Como em [`gravar`].
-pub fn texto<'a>(esquema: &str, registros: impl IntoIterator<Item = &'a str>) -> Result<String, String> {
+pub fn texto<'a>(
+    esquema: &str,
+    registros: impl IntoIterator<Item = &'a str>,
+) -> Result<String, String> {
     let temporario = Temporario::novo();
     gravar(&temporario.0, esquema, registros)?;
     let mut saida = String::new();
@@ -67,9 +77,14 @@ pub fn ler(caminho: &Path, em_texto: bool) -> Result<Vec<String>, String> {
     let leitor = crate::abi::Leitor::abrir(origem)?;
     leitor.conferir()?;
     (0..leitor.linhas)
-        .map(|i| if em_texto { leitor.texto(i) } else { leitor.json(i) })
+        .map(|i| {
+            if em_texto {
+                leitor.texto(i)
+            } else {
+                leitor.json(i)
+            }
+        })
         .collect::<Result<_, _>>()
-
 }
 
 /// Arquivo temporário que some ao sair do escopo.
@@ -79,10 +94,7 @@ impl Temporario {
     fn novo() -> Self {
         static SEQUENCIA: AtomicU64 = AtomicU64::new(0);
         let n = SEQUENCIA.fetch_add(1, Ordering::Relaxed);
-        Self(std::env::temp_dir().join(format!(
-            "wortic-{}-{n}.jsw",
-            std::process::id()
-        )))
+        Self(std::env::temp_dir().join(format!("wortic-{}-{n}.jsw", std::process::id())))
     }
 }
 

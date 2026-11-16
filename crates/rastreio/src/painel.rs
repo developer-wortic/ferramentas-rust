@@ -8,8 +8,9 @@ use crate::modelo::{Origem, Registro, Retrato};
 /// O link dos planos da Wortic, mostrado nos recursos pagos.
 pub const PLANOS: &str = "https://wortic.com.br/planos";
 
-/// O que a tela precisa saber além da memória.
+/// O que a tela precisa saber além da memória. São sinalizadores de ligado ou desligado, por isso os bools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // quatro sinalizadores independentes; virar enum esconderia a combinação
 pub struct Situacao {
     /// Se o visitante deste navegador consentiu.
     pub consentido: bool,
@@ -17,6 +18,8 @@ pub struct Situacao {
     pub envio_ligado: bool,
     /// Se `WORTIC_API_KEY` está definida. Só a presença; o valor nunca é lido aqui.
     pub wortic_chave: bool,
+    /// Se `RASTREIO_ARQUIVO` está definido: os registros também vão para o `.jsw`, e a tela diz isso.
+    pub arquivo: bool,
 }
 
 /// Os recursos pagos da Wortic: nome e o que fazem. Aparecem na tela com o aviso e o link dos planos.
@@ -108,7 +111,11 @@ pub fn pagina(retrato: &Retrato, situacao: &Situacao) -> String {
     html.push_str(ESTILO);
     html.push_str("</style></head><body><main>");
     html.push_str("<h1>Rastreio de campanhas e Conversions API</h1>");
-    html.push_str("<p class=\"sub\">Modelo da Wortic em Rust. Tudo fica só na memória deste programa: quando ele para, some.</p>");
+    if situacao.arquivo {
+        html.push_str("<p class=\"sub\">Modelo da Wortic em Rust. Os registros ficam na memória e são gravados no arquivo de RASTREIO_ARQUIVO a cada N registros; entre duas gravações, um desligamento perde o que falta gravar.</p>");
+    } else {
+        html.push_str("<p class=\"sub\">Modelo da Wortic em Rust. Tudo fica só na memória deste programa: quando ele para, some.</p>");
+    }
     html.push_str("<section class=\"cards\">");
     html.push_str(&cartao_consentimento(situacao.consentido));
     html.push_str(&cartao_envio(situacao.envio_ligado));
@@ -223,7 +230,32 @@ mod testes {
             consentido,
             envio_ligado: ligado,
             wortic_chave: chave,
+            arquivo: false,
         }
+    }
+
+    #[test]
+    fn subtitulo_diz_se_os_registros_vao_para_arquivo() {
+        let sem = pagina(
+            &Retrato {
+                origens: vec![],
+                registros: vec![],
+            },
+            &situacao(false, false, false),
+        );
+        assert!(sem.contains("quando ele para, some"));
+        let com = pagina(
+            &Retrato {
+                origens: vec![],
+                registros: vec![],
+            },
+            &Situacao {
+                arquivo: true,
+                ..situacao(false, false, false)
+            },
+        );
+        assert!(com.contains("RASTREIO_ARQUIVO"));
+        assert!(!com.contains("quando ele para, some"));
     }
 
     fn retrato_com_dados() -> Retrato {
@@ -239,6 +271,8 @@ mod testes {
             evento: "Purchase",
             event_id: "pedido\"<1>".to_string(),
             valor: Some("99,90 BRL".to_string()),
+            valor_centavos: Some(9990),
+            moeda: Some("BRL".to_string()),
             origem: "facebook / cpc / verao".to_string(),
             situacao: "enviado em 1 tentativa(s)".to_string(),
         };
@@ -319,6 +353,8 @@ mod testes {
                 evento: "Lead",
                 event_id: "x".to_string(),
                 valor: None,
+                valor_centavos: None,
+                moeda: None,
                 origem: "clid, sem UTM".to_string(),
                 situacao: "recusado: sem_consentimento".to_string(),
             }],

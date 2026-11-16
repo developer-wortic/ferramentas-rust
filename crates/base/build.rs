@@ -26,7 +26,10 @@ fn main() {
     };
     println!("cargo:rustc-link-search=native={}", pasta.display());
     println!("cargo:rustc-link-lib=static=jsonw");
-    println!("cargo:rerun-if-changed={}", pasta.join("libjsonw.a").display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        pasta.join("libjsonw.a").display()
+    );
     // a libjsonw usa a libm e as threads do sistema
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
         println!("cargo:rustc-link-lib=m");

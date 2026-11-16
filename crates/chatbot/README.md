@@ -1,44 +1,45 @@
 # Chatbot de prospecção em Rust, com a sua chave
 
 <!-- GIF -->
-![Demonstração: configurar a chave, editar o roteiro e conversar no widget até o resumo do lead](docs/demo.gif)
+![Demonstração: configurar a chave, editar o roteiro e conversar no widget até o resumo do lead](../../docs/chatbot/demo.gif)
 
 Um chatbot simples para qualificar visitantes do seu site. Você escreve o roteiro em um arquivo, cola a sua chave de OpenAI, Anthropic (Claude), Google (Gemini), Groq ou OpenRouter e pronto: o bot conversa, faz as perguntas de qualificação e entrega um resumo do lead com nota de 0 a 100 e o motivo.
 
-[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1d1d1f?style=flat-square)](LICENSE)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1d1d1f?style=flat-square)](../../LICENSE)
 ![Rust 2024](https://img.shields.io/badge/Rust-2024-1d1d1f?style=flat-square)
-[![Testes](https://github.com/developer-wortic/modelo-chatbot-prospeccao-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/developer-wortic/modelo-chatbot-prospeccao-rust/actions/workflows/ci.yml)
-![Cobertura de linhas 100%](https://img.shields.io/badge/cobertura-100%25-1d1d1f?style=flat-square)
+[![Testes](https://github.com/developer-wortic/ferramentas-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/developer-wortic/ferramentas-rust/actions/workflows/ci.yml)
+![Cobertura de linhas 99,6%](https://img.shields.io/badge/cobertura-99%2C6%25-1d1d1f?style=flat-square)
 
 **[Ver planos Wortic](https://wortic.com.br/planos)** · **[Pegar a chave na OpenAI](https://platform.openai.com/api-keys)** · **[Pegar a chave na Anthropic](https://platform.claude.com/settings/keys)** · **[Pegar a chave no Gemini](https://aistudio.google.com/apikey)** · **[Pegar a chave na Groq](https://console.groq.com/keys)** · **[Pegar a chave no OpenRouter](https://openrouter.ai/settings/keys)**
 
 ## Três provas que você pode conferir
 
-1. **Os testes passam.** Rode `cargo test`. São 121 testes, contra um servidor falso local. Nenhuma chamada sai da sua máquina e nenhum crédito é gasto.
-2. **A cobertura é total.** `cargo llvm-cov` mede 100% das linhas de `src/`, e o LCOV confirma linha por linha (1.891 de 1.891).
+1. **Os testes passam.** Rode `cargo test -p chatbot-prospeccao` e `cargo test -p wortic --test chatbot`. São 146 testes no crate e 16 no binário `wortic chatbot`, contra um servidor falso local. Nenhuma chamada sai da sua máquina e nenhum crédito é gasto.
+2. **A cobertura é quase total.** `cargo llvm-cov` mede 99,6% das linhas de `src/` (2.288 de 2.298) na suíte inteira (162 testes). As 10 linhas que faltam são de erro de disco ou de leitura que não se provoca em teste, e uma de caminho que só roda no processo filho. Não é a cobertura de 100% da versão anterior, e a medição é esta.
 3. **A injeção de instruções é testada.** 25 tentativas de injeção contra um provedor falso que repete o que recebe. Todas passam. A saída está em `cargo test --test injecao -- --nocapture`.
 
 ## Início rápido
 
 ```sh
-git clone https://github.com/developer-wortic/modelo-chatbot-prospeccao-rust
-cd modelo-chatbot-prospeccao-rust
-cargo run --release
+git clone https://github.com/developer-wortic/ferramentas-rust
+cd ferramentas-rust
+cargo build --release -p wortic
+./target/release/wortic chatbot
 ```
 
 Abra http://127.0.0.1:8080 e siga os cinco passos da tela:
 
 1. Escolha o provedor de IA.
 2. Clique em "Abrir a página de chaves". A página oficial abre em outra aba.
-3. Cole a chave. Ela fica em `dados/configuracao.toml`, com permissão 600 (só o seu usuário lê).
+3. Cole a chave. Ela fica em `dados/configuracao.jsw.txt` (jsonW-texto), com permissão 600 (só o seu usuário lê).
 4. Clique em "Testar chave". É uma única chamada mínima, e nada é gravado.
 5. Clique em "Salvar configuração". O bot já responde com essa chave.
 
 Quer ver antes de gastar nada? Rode o provedor falso de demonstração:
 
 ```sh
-cargo run --example provedor_falso      # imprime o endereço, por exemplo http://127.0.0.1:49749/v1
-CHATBOT_BASE_URL=http://127.0.0.1:49749/v1 CHATBOT_CHAVE=demo cargo run
+cargo run -p chatbot-prospeccao --example provedor_falso   # imprime o endereço, por exemplo http://127.0.0.1:49749/v1
+CHATBOT_BASE_URL=http://127.0.0.1:49749/v1 CHATBOT_CHAVE=demo wortic chatbot
 ```
 
 O provedor falso responde um roteiro fixo. Ele não é um modelo de IA, serve para ver a tela e o widget funcionando. As capturas deste README foram feitas assim.
@@ -46,7 +47,7 @@ O provedor falso responde um roteiro fixo. Ele não é um modelo de IA, serve pa
 ## O que vem pronto
 
 - **Cinco provedores, com a sua chave (BYOK).** OpenAI, Anthropic, Google (Gemini), Groq e OpenRouter. Você paga direto ao provedor, pela sua conta.
-- **Um roteiro em arquivo.** `roteiro.toml` diz quem é a empresa, o que vende, para quem, as perguntas de qualificação (orçamento, prazo, decisor) e quando passar para uma pessoa. Você edita, salva, e vale na próxima conversa.
+- **Um roteiro em arquivo.** `roteiro.jsw.txt` (jsonW-texto) diz quem é a empresa, o que vende, para quem, as perguntas de qualificação (orçamento, prazo, decisor) e quando passar para uma pessoa. Você edita, salva, e vale na próxima conversa.
 - **Resumo do lead.** Nome, contato, interesse, nota de 0 a 100 e motivo. A nota e o resumo aparecem só na administração.
 - **Widget para qualquer site.** Uma linha de `<script>`. Sem dependência, sem build, texto sempre como texto (nunca HTML).
 - **Administração com onboarding.** Cinco passos, link direto para a página oficial de cada provedor, botão de teste, editor do roteiro e lista de leads.
@@ -69,35 +70,65 @@ O modelo padrão é um modelo barato e atual de cada provedor. Você troca na te
 
 O roteiro de exemplo vende um sistema de estoque fictício para "Loja Exemplo". Você troca os textos pelos da sua empresa:
 
-```toml
-[empresa]
-nome = "Loja Exemplo"
-o_que_vende = "Sistema simples de controle de estoque para lojas de bairro"
-para_quem = "Lojas de bairro com um a cinco funcionários"
-tom = "cordial e direto"
-
-[qualificacao]
-perguntas = [
-  "Quantas pessoas trabalham na loja hoje?",
-  "Hoje o estoque é controlado em planilha, caderno ou sistema?",
-  "Vocês já têm um valor em mente para investir nisso por mês?",
-  "Quando gostariam de começar a usar algo novo?",
-  "Quem decide a compra dessas ferramentas na loja?",
-]
-
-[humano]
-a_partir_da_nota = 70
-quando = [
-  "o visitante pedir para falar com uma pessoa",
-  "o visitante for quem decide e quiser começar em até 60 dias",
-]
+```text
+{
+  empresa: {
+    nome: "Loja Exemplo",
+    o_que_vende: "Sistema simples de controle de estoque para lojas de bairro",
+    para_quem: "Lojas de bairro com um a cinco funcionários",
+    tom: "cordial e direto",
+  },
+  qualificacao: {
+    perguntas: [
+      "Quantas pessoas trabalham na loja hoje?",
+      "Hoje o estoque é controlado em planilha, caderno ou sistema?",
+      "Vocês já têm um valor em mente para investir nisso por mês?",
+      "Quando gostariam de começar a usar algo novo?",
+      "Quem decide a compra dessas ferramentas na loja?",
+    ],
+  },
+  humano: {
+    a_partir_da_nota: 70,
+    quando: [
+      "o visitante pedir para falar com uma pessoa",
+      "o visitante for quem decide e quiser começar em até 60 dias",
+    ],
+  },
+}
 ```
 
-O roteiro tem limites: de 1 a 10 perguntas, e a nota vai de 0 a 100. Um arquivo inválido é recusado com a mensagem do campo que falhou.
+O formato é jsonW-texto: chave sem aspas, comentário com `//`, vírgula sobrando no fim de cada item. O roteiro de exemplo completo, com os comentários, sai com `wortic chatbot roteiro exemplo`. Para conferir um arquivo antes de subir: `wortic chatbot roteiro conferir roteiro.jsw.txt`.
+
+O roteiro tem limites: de 1 a 10 perguntas, e a nota vai de 0 a 100. Um arquivo inválido é recusado com a razão (da libjsonw ou da validação) e a mensagem do campo que falhou.
+
+## Formato dos dados: jsonW em tudo, JSON só na borda
+
+Roteiro, configuração e leads são jsonW. O JSON fica só onde o dado sai para fora: a tela e o widget do navegador, e a API dos provedores. Quem pede jsonW recebe o mesmo registro em texto:
+
+| Pedido | Resposta |
+|---|---|
+| sem nada (padrão do navegador) | JSON |
+| `Accept: text/jsonw` ou `?formato=jsonw` | jsonW-texto |
+| `GET /api/leads?formato=jsw` ou `Accept: application/jsonw` | arquivo `.jsw` com o esquema de lead (`nome`, `contato`, `interesse`, `nota` i64, `motivo`, `criado_em` tempo) |
+
+O `GET /api/roteiro` devolve o roteiro em jsonW-texto (ou `{"jsonw": "..."}` na borda). O `POST /api/roteiro` recebe o mesmo texto no campo `jsonw`, confere com o esquema e grava de forma atômica. Um `.jsw` sem lead não existe: sem lead, a rota responde 404 `sem_leads`, porque a própria libjsonw não lê um arquivo sem linha.
+
+A configuração fica em `dados/configuracao.jsw.txt`, gravada com permissão 600. O `roteiro.toml` e o `dados/configuracao.toml` de versões antigas são convertidos sozinhos na partida: o original fica em `<nome>.toml.antes`, sem apagar nada. Para converter à mão uma pasta: `wortic chatbot migrar [pasta]`.
+
+## Linha de comando
+
+```sh
+wortic chatbot                              # sobe o painel, o widget e a API (padrão)
+wortic chatbot roteiro exemplo              # imprime o roteiro de exemplo em jsonW-texto
+wortic chatbot roteiro conferir roteiro.jsw.txt   # sem erro sai com 0; com erro, diz a razão e sai com 1
+wortic chatbot migrar [pasta]               # converte o roteiro.toml e o dados/configuracao.toml antigos
+wortic chatbot leads leads.jsw              # imprime os leads em jsonW-texto (--json, para quem vem de fora)
+wortic chatbot ajuda
+```
 
 ## Segurança: a chave e a injeção
 
-**A chave.** Ela fica em `dados/configuracao.toml` (permissão 600) ou na variável `CHATBOT_CHAVE`. A tela nunca mostra a chave, e a resposta de nenhuma rota a devolve. Ela não entra em log, em erro nem na `Debug` das structs. O teste `chave_nao_aparece_no_debug_do_provedor_nem_do_erro` confere isso.
+**A chave.** Ela fica em `dados/configuracao.jsw.txt` (permissão 600) ou na variável `CHATBOT_CHAVE`. A tela nunca mostra a chave, e a resposta de nenhuma rota a devolve. Ela não entra em log, em erro nem na `Debug` das structs. O teste `chave_nao_aparece_no_debug_do_provedor_nem_do_erro` confere isso.
 
 **A injeção.** Vinte e cinco tentativas estão em `tests/injecao.rs`. Elas pedem o roteiro, a chave, o critério de passagem para humano, uma troca de papel, uma lista de perguntas, e algumas trazem trechos reais do roteiro para testar a saída. O resultado nesta versão foi:
 
@@ -138,7 +169,7 @@ Publique atrás de HTTPS, com um proxy como Caddy ou Nginx. Sem HTTPS, a convers
 | `CHATBOT_PROVEDOR` | `openai`, `anthropic`, `gemini`, `groq` ou `openrouter` | `openai` |
 | `CHATBOT_MODELO` | Nome do modelo do provedor | o padrão da tabela |
 | `CHATBOT_CHAVE` | Chave do provedor (tem prioridade sobre o arquivo) | sem chave |
-| `CHATBOT_ROTEIRO` | Caminho do roteiro | `roteiro.toml` |
+| `CHATBOT_ROTEIRO` | Caminho do roteiro (jsonW-texto) | `roteiro.jsw.txt` |
 | `CHATBOT_DADOS` | Pasta da configuração | `dados` |
 | `CHATBOT_ORIGENS` | Sites que podem chamar o chat, separados por vírgula | nenhum |
 | `PORTA` | Porta do servidor (0 escolhe uma livre) | `8080` |
@@ -155,19 +186,24 @@ Publique atrás de HTTPS, com um proxy como Caddy ou Nginx. Sem HTTPS, a convers
 ## Testes
 
 ```sh
-cargo test
-cargo llvm-cov --summary-only --ignore-filename-regex '(tests/|examples/|/rustc/|\.cargo/)'
-cargo clippy --all-targets -- -D warnings -W clippy::pedantic
+cargo test -p chatbot-prospeccao
+cargo test -p wortic --test chatbot
+cargo llvm-cov --summary-only -p chatbot-prospeccao -p wortic --tests
+cargo clippy --no-deps -p chatbot-prospeccao --all-targets -- -D warnings -W clippy::pedantic
 cargo fmt --check
 ```
 
-Cobertura de linhas: 100% de `src/`. O mesmo roda no GitHub Actions em cada push e em cada pull request, em `.github/workflows/ci.yml`.
+Cobertura de linhas: 99,6% de `src/` (2.288 de 2.298, 162 testes). O mesmo roda no GitHub Actions em cada push e em cada pull request, em `.github/workflows/ci.yml`.
 
 ## Estrutura
 
 - `src/provedor/` tem o traço `Provedor` e uma implementação por provedor, um arquivo cada.
 - `src/guarda.rs` tem a proteção de entrada e de saída.
-- `src/roteiro.rs` lê e valida o `roteiro.toml`.
+- `src/roteiro.rs` lê e valida o `roteiro.jsw.txt` (esquema conferido pela libjsonw).
+- `src/configuracao.rs` lê e grava `dados/configuracao.jsw.txt` (600).
+- `src/migracao.rs` converte o TOML antigo para jsonW (o único uso do crate `toml`).
+- `src/lead.rs` tem o esquema do `.jsw` de leads.
+- `src/cli.rs` tem os subcomandos `wortic chatbot roteiro`, `migrar` e `leads`.
 - `src/atendimento.rs` guarda as sessões e monta a conversa.
 - `src/lead.rs` lê o resumo e guarda a lista de leads.
 - `src/servidor.rs` tem as rotas HTTP. A administração só responde a partir desta máquina.
@@ -198,15 +234,15 @@ A fala do visitante entra como dado, e a resposta é conferida antes de sair. Os
 
 ## English
 
-**Prospecting chatbot in Rust, with your own key.** A small, clean chatbot that qualifies visitors on your website. You write the script in a TOML file, paste your key from OpenAI, Anthropic (Claude), Google (Gemini), Groq or OpenRouter, and the bot talks to visitors, asks the qualification questions and produces a lead summary with a 0 to 100 score and the reason. It is BYOK: you pay the provider directly. One binary, with the admin page and the chat widget embedded. Visitor text is passed as data, never as instructions, and the reply is checked before it leaves (key, rules and script are never repeated). 121 tests run against a local fake provider, 100% line coverage with cargo llvm-cov, clippy pedantic with zero warnings. The paid Wortic plan adds WhatsApp, CRM, queues and company search; they are shown as hooks with a link to https://wortic.com.br/planos and are not part of this code. MIT licensed.
+**Prospecting chatbot in Rust, with your own key.** A small, clean chatbot that qualifies visitors on your website. You write the script in a jsonW text file, paste your key from OpenAI, Anthropic (Claude), Google (Gemini), Groq or OpenRouter, and the bot talks to visitors, asks the qualification questions and produces a lead summary with a 0 to 100 score and the reason. It is BYOK: you pay the provider directly. One binary, with the admin page and the chat widget embedded. Visitor text is passed as data, never as instructions, and the reply is checked before it leaves (key, rules and script are never repeated). 146 tests in the crate and 16 in the binary run against a local fake provider, 99.3% line coverage with cargo llvm-cov, clippy pedantic with zero warnings. The paid Wortic plan adds WhatsApp, CRM, queues and company search; they are shown as hooks with a link to https://wortic.com.br/planos and are not part of this code. MIT licensed.
 
 ## Licença
 
-MIT. Use, mude e venda o seu sistema feito a partir deste modelo. Texto completo em [LICENSE](LICENSE).
+MIT. Use, mude e venda o seu sistema feito a partir deste modelo. Texto completo em [LICENSE](../../LICENSE).
 
 ## Contribuir e segurança
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) para contribuir e [SECURITY.md](SECURITY.md) para relatar falha de segurança.
+Veja [CONTRIBUTING.md](../../CONTRIBUTING.md) para contribuir e [SECURITY.md](../../SECURITY.md) para relatar falha de segurança.
 
 ---
 

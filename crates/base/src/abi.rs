@@ -6,15 +6,31 @@ use std::ffi::{CStr, CString, c_char, c_int, c_void};
 unsafe extern "C" {
     fn jsonw_versao() -> *const c_char;
     fn jsonw_abrir(caminho: *const c_char, erro: *mut c_char, nerro: usize) -> *mut c_void;
-    fn jsonw_abrir_memoria(bytes: *const c_void, n: usize, erro: *mut c_char, nerro: usize) -> *mut c_void;
+    fn jsonw_abrir_memoria(
+        bytes: *const c_void,
+        n: usize,
+        erro: *mut c_char,
+        nerro: usize,
+    ) -> *mut c_void;
     fn jsonw_fechar(a: *mut c_void);
     fn jsonw_linhas(a: *const c_void) -> u64;
     fn jsonw_linha_json(a: *mut c_void, linha: u64, saida: *mut c_char, cap: usize) -> i64;
     fn jsonw_linha_texto(a: *mut c_void, linha: u64, saida: *mut c_char, cap: usize) -> i64;
     fn jsonw_conferir(a: *mut c_void, erro: *mut c_char, nerro: usize) -> c_int;
-    fn jsonw_criar(caminho: *const c_char, esquema: *const c_char, erro: *mut c_char, nerro: usize) -> *mut c_void;
+    fn jsonw_criar(
+        caminho: *const c_char,
+        esquema: *const c_char,
+        erro: *mut c_char,
+        nerro: usize,
+    ) -> *mut c_void;
     fn jsonw_opcoes(w: *mut c_void, nivel: c_int, hash: c_int, bloco_kb: c_int) -> c_int;
-    fn jsonw_gravar_json(w: *mut c_void, json: *const c_char, n: usize, erro: *mut c_char, nerro: usize) -> c_int;
+    fn jsonw_gravar_json(
+        w: *mut c_void,
+        json: *const c_char,
+        n: usize,
+        erro: *mut c_char,
+        nerro: usize,
+    ) -> c_int;
     fn jsonw_fechar_escritor(w: *mut c_void) -> c_int;
     fn jsonw_abandonar(w: *mut c_void) -> c_int;
 }
@@ -82,13 +98,19 @@ impl Leitor {
     /// Os bytes não são um `.jsw` íntegro.
     pub fn de_bytes(bytes: &[u8]) -> Result<Self, String> {
         // SAFETY: a libjsonw copia os bytes; o slice vive durante a chamada.
-        let (a, erro) = com_erro(|e, n| unsafe { jsonw_abrir_memoria(bytes.as_ptr().cast(), bytes.len(), e, n) });
+        let (a, erro) = com_erro(|e, n| unsafe {
+            jsonw_abrir_memoria(bytes.as_ptr().cast(), bytes.len(), e, n)
+        });
         Self::de(a, erro)
     }
 
     fn de(a: *mut c_void, erro: String) -> Result<Self, String> {
         if a.is_null() {
-            return Err(if erro.is_empty() { "não é jsonW".into() } else { erro });
+            return Err(if erro.is_empty() {
+                "não é jsonW".into()
+            } else {
+                erro
+            });
         }
         // SAFETY: handle válido devolvido pela ABI.
         let linhas = unsafe { jsonw_linhas(a) };
@@ -145,7 +167,11 @@ impl Escritor {
         // SAFETY: textos terminados em 0 e buffer de erro do tamanho passado.
         let (w, erro) = com_erro(|b, n| unsafe { jsonw_criar(c.as_ptr(), e.as_ptr(), b, n) });
         if w.is_null() {
-            return Err(if erro.is_empty() { "não consegui criar o arquivo".into() } else { erro });
+            return Err(if erro.is_empty() {
+                "não consegui criar o arquivo".into()
+            } else {
+                erro
+            });
         }
         Ok(Self { w })
     }
@@ -162,7 +188,9 @@ impl Escritor {
     /// A linha não casa com o esquema, com a razão.
     pub fn gravar(&mut self, linha: &str) -> Result<(), String> {
         // SAFETY: handle vivo; a linha vive durante a chamada.
-        let (r, erro) = com_erro(|e, n| unsafe { jsonw_gravar_json(self.w, linha.as_ptr().cast(), linha.len(), e, n) });
+        let (r, erro) = com_erro(|e, n| unsafe {
+            jsonw_gravar_json(self.w, linha.as_ptr().cast(), linha.len(), e, n)
+        });
         if r == 0 { Ok(()) } else { Err(erro) }
     }
 

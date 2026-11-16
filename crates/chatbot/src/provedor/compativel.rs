@@ -1,7 +1,7 @@
 //! Formato de chat completions (`POST {base}/chat/completions`, com `stream: true`), usado por `Groq` e `OpenRouter`.
 //! O sistema entra como mensagem `system`; a fala do visitante, sempre como `user`.
 
-use serde_json::{Value, json}; // borda-json: corpo e eventos trocados com APIs de terceiros (Groq e OpenRouter)
+use serde_json::{Value, json}; // borda-json: API do provedor (Groq e OpenRouter: corpo e eventos)
 
 use super::{Ajustes, Conversa, MAX_TOKENS, Passo, ler_fluxo, mensagem_de_erro, papel_padrao};
 use crate::erro::Erro;

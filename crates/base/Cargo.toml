@@ -10,3 +10,4 @@ authors.workspace = true
 build = "build.rs"
 
 [dependencies]
+tiny_http.workspace = true

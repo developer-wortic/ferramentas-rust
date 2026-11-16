@@ -1,7 +1,7 @@
 //! `Anthropic` pela Messages API: `POST {base}/messages` com `stream: true` (SSE).
 //! Cabeçalhos: `x-api-key` e `anthropic-version: 2026-10-21` (a versão atual da doc).
 
-use serde_json::{Value, json}; // borda-json: corpo e eventos trocados com a API da Anthropic (terceiro)
+use serde_json::{Value, json}; // borda-json: API do provedor (Anthropic: corpo e eventos)
 
 use super::{
     Ajustes, Conversa, MAX_TOKENS, Passo, Provedor, ler_fluxo, mensagem_de_erro, papel_padrao,

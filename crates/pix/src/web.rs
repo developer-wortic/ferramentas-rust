@@ -1,11 +1,15 @@
-//! As rotas do servidor, sem sockets: cada pedido vira uma `Resposta`. Assim a lógica
-//! é testável sem subir a porta. O `servidor` só liga isso ao `tiny_http`.
+//! As rotas do servidor, sem sockets: cada pedido vira uma `Resposta`. Assim a lógica é testável sem subir a porta.
+//! O `servidor` só liga isso ao `tiny_http`.
+//!
+//! O formato da resposta sai do cabeçalho `Accept` (`text/jsonw`) ou do parâmetro `formato=jsonw` (o parâmetro vence).
+//! Sem pedido, é JSON: é o que a tela embutida usa, e a borda com o navegador continua igual.
 
-use std::fmt::Write;
+use wortic_base::Formato;
+use wortic_base::formato::{TIPO_JSON, parametro};
 
 use crate::cobranca::Cobranca;
 use crate::erro::Erro;
-use crate::{leitura, qr};
+use crate::{jsonw, leitura, qr, registro};
 
 /// A tela, embutida no binário.
 pub const TELA: &str = include_str!("../static/index.html");
@@ -18,46 +22,74 @@ pub struct Resposta {
     pub corpo: String,
 }
 
-const JSON: &str = "application/json; charset=utf-8";
 const HTML: &str = "text/html; charset=utf-8";
 
-/// Decide a resposta de um caminho. `consulta` é o que vem depois do `?`, sem o `?`.
+/// Decide a resposta de um caminho. `consulta` é o que vem depois do `?`, sem o `?`; `accept` é o cabeçalho `Accept`.
 /// `tem_chave` diz só se `WORTIC_API_KEY` está definida: a chave em si nunca sai daqui.
 #[must_use]
-pub fn rota(caminho: &str, consulta: &str, tem_chave: bool) -> Resposta {
+pub fn rota(caminho: &str, consulta: &str, accept: Option<&str>, tem_chave: bool) -> Resposta {
+    let formato = Formato::do_pedido(accept, parametro(consulta, "formato"));
     match caminho {
         "/" => Resposta {
             status: 200,
             tipo: HTML,
             corpo: TELA.to_string(),
         },
-        "/api/config" => json(200, format!("{{\"chave\":{tem_chave}}}")),
-        "/api/gerar" => resposta_de(gerar(&parametros(consulta))),
-        "/api/ler" => resposta_de(ler_codigo(&parametros(consulta))),
-        _ => json(404, erro_json("Rota não encontrada.")),
+        "/api/config" => api(
+            formato,
+            200,
+            jsonw::ESQUEMA_CONFIG,
+            &registro::config(tem_chave),
+        ),
+        "/api/gerar" => resposta_de(
+            formato,
+            jsonw::ESQUEMA_COBRANCA,
+            gerar(&parametros(consulta)),
+        ),
+        "/api/ler" => resposta_de(
+            formato,
+            jsonw::ESQUEMA_LEITURA,
+            ler_codigo(&parametros(consulta)),
+        ),
+        _ => api(
+            formato,
+            404,
+            jsonw::ESQUEMA_ERRO,
+            &registro::erro(None, "Rota não encontrada."),
+        ),
     }
 }
 
-fn json(status: u16, corpo: String) -> Resposta {
-    Resposta {
-        status,
-        tipo: JSON,
-        corpo,
-    }
-}
-
-fn resposta_de(resultado: Result<String, Erro>) -> Resposta {
+fn resposta_de(formato: Formato, esquema: &str, resultado: Result<String, Erro>) -> Resposta {
     match resultado {
-        Ok(corpo) => json(200, corpo),
-        Err(erro) => json(400, erro_json(&erro.to_string())),
+        Ok(registro) => api(formato, 200, esquema, &registro),
+        Err(erro) => api(
+            formato,
+            400,
+            jsonw::ESQUEMA_ERRO,
+            &registro::erro(None, &erro.to_string()),
+        ),
     }
 }
 
-fn erro_json(mensagem: &str) -> String {
-    format!("{{\"erro\":{{\"mensagem\":{}}}}}", texto_json(mensagem))
+/// A resposta da API no formato pedido. Se o registro não passar na libjsonw (erro de programa, não de quem pediu),
+/// sai 500 em JSON, que é o formato que não depende de conferência.
+fn api(formato: Formato, status: u16, esquema: &str, registro: &str) -> Resposta {
+    match jsonw::registro(formato, esquema, registro) {
+        Ok(corpo) => Resposta {
+            status,
+            tipo: formato.tipo_do_corpo(),
+            corpo,
+        },
+        Err(razao) => Resposta {
+            status: 500,
+            tipo: TIPO_JSON,
+            corpo: registro::erro(None, &razao),
+        },
+    }
 }
 
-/// Monta a cobrança estática: devolve o copia e cola, o QR em SVG e o tipo da chave.
+/// Monta a cobrança estática: devolve o registro com o copia e cola, o QR em SVG e os campos.
 fn gerar(p: &[(String, String)]) -> Result<String, Erro> {
     let mut cobranca = Cobranca::nova(
         obrigatorio(p, "chave", "chave Pix")?,
@@ -73,43 +105,14 @@ fn gerar(p: &[(String, String)]) -> Result<String, Erro> {
     if let Some(descricao) = opcional(p, "descricao") {
         cobranca = cobranca.com_descricao(descricao)?;
     }
-    let codigo = cobranca.codigo()?;
-    let svg = qr::svg(&codigo)?;
-    Ok(format!(
-        "{{\"codigo\":{},\"qr_svg\":{},\"tipo_chave\":{}}}",
-        texto_json(&codigo),
-        texto_json(&svg),
-        texto_json(cobranca.chave.tipo().nome())
-    ))
+    let svg = qr::svg(&cobranca.codigo()?)?;
+    registro::cobranca(&cobranca, Some(&svg))
 }
 
 /// Lê um copia e cola e devolve os campos.
 fn ler_codigo(p: &[(String, String)]) -> Result<String, Erro> {
     let l = leitura::ler(obrigatorio(p, "codigo", "código Pix")?)?;
-    let campos: Vec<String> = l
-        .campos
-        .iter()
-        .map(|c| {
-            format!(
-                "{{\"id\":{},\"valor\":{}}}",
-                texto_json(&c.id),
-                texto_json(&c.valor)
-            )
-        })
-        .collect();
-    Ok(format!(
-        "{{\"chave\":{},\"descricao\":{},\"valor\":{},\"moeda\":{},\"pais\":{},\"nome\":{},\"cidade\":{},\"categoria\":{},\"txid\":{},\"campos\":[{}]}}",
-        texto_json(&l.chave),
-        opcional_json(l.descricao.as_deref()),
-        opcional_json(l.valor.as_deref()),
-        texto_json(&l.moeda),
-        texto_json(&l.pais),
-        texto_json(&l.nome),
-        texto_json(&l.cidade),
-        texto_json(&l.categoria),
-        opcional_json(l.txid.as_deref()),
-        campos.join(",")
-    ))
+    Ok(registro::leitura(&l))
 }
 
 fn obrigatorio<'a>(
@@ -167,32 +170,6 @@ pub fn decodificar(texto: &str) -> String {
     String::from_utf8_lossy(&saida).into_owned()
 }
 
-fn opcional_json(valor: Option<&str>) -> String {
-    valor.map_or_else(|| "null".to_string(), texto_json)
-}
-
-/// Põe um texto entre aspas no formato JSON, escapando o que precisa.
-#[must_use]
-pub fn texto_json(texto: &str) -> String {
-    let mut saida = String::with_capacity(texto.len() + 2);
-    saida.push('"');
-    for c in texto.chars() {
-        match c {
-            '"' => saida.push_str("\\\""),
-            '\\' => saida.push_str("\\\\"),
-            '\n' => saida.push_str("\\n"),
-            '\r' => saida.push_str("\\r"),
-            '\t' => saida.push_str("\\t"),
-            c if u32::from(c) < 0x20 => {
-                let _ = write!(saida, "\\u{:04x}", u32::from(c));
-            }
-            c => saida.push(c),
-        }
-    }
-    saida.push('"');
-    saida
-}
-
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -203,9 +180,14 @@ mod testes {
         &r.corpo
     }
 
+    fn json(r: &Resposta) -> &str {
+        assert_eq!(r.tipo, TIPO_JSON);
+        &r.corpo
+    }
+
     #[test]
     fn a_raiz_entrega_a_tela() {
-        let r = rota("/", "", false);
+        let r = rota("/", "", None, false);
         assert_eq!(r.status, 200);
         assert_eq!(r.tipo, HTML);
         assert!(corpo(&r).contains("<title>"));
@@ -213,74 +195,94 @@ mod testes {
 
     #[test]
     fn config_diz_so_se_ha_chave() {
-        assert_eq!(rota("/api/config", "", true).corpo, "{\"chave\":true}");
-        assert_eq!(rota("/api/config", "", false).corpo, "{\"chave\":false}");
+        assert_eq!(
+            rota("/api/config", "", None, true).corpo,
+            "{\"chave\":true}"
+        );
+        assert_eq!(
+            rota("/api/config", "", None, false).corpo,
+            "{\"chave\":false}"
+        );
     }
 
     #[test]
     fn gerar_devolve_codigo_qr_e_tipo() {
-        let r = rota("/api/gerar", &format!("{CHAVE}&valor=10%2C50"), false);
+        let r = rota("/api/gerar", &format!("{CHAVE}&valor=10%2C50"), None, false);
         assert_eq!(r.status, 200);
-        assert_eq!(r.tipo, JSON);
+        assert_ne!(json(&r), "");
         assert!(corpo(&r).starts_with("{\"codigo\":\"000201"));
         assert!(corpo(&r).contains("\"tipo_chave\":\"CPF\""));
         assert!(corpo(&r).contains("\"qr_svg\":\"<svg "));
-        assert!(corpo(&r).contains("540510.50"));
+        assert!(corpo(&r).contains("\"valor\":\"10.50 BRL\""));
     }
 
     #[test]
     fn gerar_com_campo_faltando_da_400_com_a_mensagem() {
-        let r = rota("/api/gerar", "nome=Ana&cidade=Recife", false);
+        let r = rota("/api/gerar", "nome=Ana&cidade=Recife", None, false);
         assert_eq!(r.status, 400);
         assert!(corpo(&r).contains("chave Pix é obrigatório."));
         let r = rota(
             "/api/gerar",
             "chave=123.456.789-09&nome=&cidade=Recife",
+            None,
             false,
         );
         assert!(corpo(&r).contains("nome do recebedor é obrigatório."));
-        let r = rota("/api/gerar", "chave=123.456.789-09&nome=Ana", false);
+        let r = rota("/api/gerar", "chave=123.456.789-09&nome=Ana", None, false);
         assert!(corpo(&r).contains("cidade é obrigatório."));
     }
 
     #[test]
     fn gerar_com_valor_txid_descricao_e_erro_de_cada_um() {
         let base = CHAVE;
-        let r = rota("/api/gerar", &format!("{base}&valor=abc"), false);
+        let r = rota("/api/gerar", &format!("{base}&valor=abc"), None, false);
         assert_eq!(r.status, 400);
         assert!(corpo(&r).contains("valor inválido"));
-        let r = rota("/api/gerar", &format!("{base}&txid=a%20b"), false);
+        let r = rota("/api/gerar", &format!("{base}&txid=a%20b"), None, false);
         assert!(corpo(&r).contains("txid inválido"));
         let r = rota(
             "/api/gerar",
             &format!("{base}&txid=PED1&descricao=Pedido+1"),
+            None,
             false,
         );
         assert_eq!(r.status, 200);
-        assert!(corpo(&r).contains("62090505PED1") || corpo(&r).contains("PED1"));
+        assert!(corpo(&r).contains("\"txid\":\"PED1\""));
+        assert!(corpo(&r).contains("\"descricao\":\"Pedido 1\""));
         let longa = "d".repeat(80);
-        let r = rota("/api/gerar", &format!("{base}&descricao={longa}"), false);
+        let r = rota(
+            "/api/gerar",
+            &format!("{base}&descricao={longa}"),
+            None,
+            false,
+        );
         assert!(corpo(&r).contains("descrição passa de 72"));
     }
 
     #[test]
     fn gerar_com_chave_ruim_da_400() {
-        let r = rota("/api/gerar", "chave=abc&nome=Ana&cidade=Recife", false);
+        let r = rota(
+            "/api/gerar",
+            "chave=abc&nome=Ana&cidade=Recife",
+            None,
+            false,
+        );
         assert_eq!(r.status, 400);
         assert!(corpo(&r).contains("chave Pix inválida"));
     }
 
     #[test]
     fn ler_devolve_os_campos_do_copia_e_cola() {
-        let codigo = gerar(&parametros(CHAVE)).unwrap();
-        let codigo_texto = {
-            let inicio = codigo.find("\"codigo\":\"").unwrap() + 10;
-            let fim = codigo[inicio..].find('"').unwrap() + inicio;
-            codigo[inicio..fim].to_string()
+        let codigo = {
+            let r = rota("/api/gerar", CHAVE, None, false);
+            let inicio = r.corpo.find("\"codigo\":\"").unwrap() + 10;
+            let fim = r.corpo[inicio..].find('"').unwrap() + inicio;
+            r.corpo[inicio..fim].to_string()
         };
         let r = rota(
             "/api/ler",
-            &format!("codigo={}", codigo_texto.replace(' ', "+")),
+            &format!("codigo={}", codigo.replace(' ', "+")),
+            None,
             false,
         );
         assert_eq!(r.status, 200, "{}", r.corpo);
@@ -292,20 +294,59 @@ mod testes {
 
     #[test]
     fn ler_codigo_ruim_da_400_e_sem_codigo_tambem() {
-        let r = rota("/api/ler", "codigo=000201", false);
+        let r = rota("/api/ler", "codigo=000201", None, false);
         assert_eq!(r.status, 400);
         assert!(corpo(&r).contains("não li o código"));
-        let r = rota("/api/ler", "", false);
+        let r = rota("/api/ler", "", None, false);
         assert_eq!(r.status, 400);
         assert!(corpo(&r).contains("código Pix é obrigatório."));
     }
 
     #[test]
     fn rota_que_nao_existe_da_404_em_json() {
-        let r = rota("/nao_existe", "", false);
+        let r = rota("/nao_existe", "", None, false);
         assert_eq!(r.status, 404);
-        assert_eq!(r.tipo, JSON);
-        assert!(corpo(&r).contains("Rota não encontrada."));
+        assert_eq!(
+            json(&r),
+            "{\"erro\":{\"linha\":null,\"mensagem\":\"Rota não encontrada.\"}}"
+        );
+    }
+
+    #[test]
+    fn jsonw_pelo_accept_ou_pelo_parametro() {
+        let r = rota("/api/config", "", Some("text/jsonw"), true);
+        assert_eq!(r.tipo, "text/jsonw; charset=utf-8");
+        assert_eq!(r.corpo, "{chave:true}");
+        let r = rota("/api/config", "formato=jsonw", None, false);
+        assert_eq!(r.corpo, "{chave:false}");
+        let r = rota("/api/config", "formato=json", Some("text/jsonw"), true);
+        assert_eq!(r.corpo, "{\"chave\":true}");
+    }
+
+    #[test]
+    fn gerar_em_jsonw_tira_as_aspas_e_tipa_o_valor() {
+        let r = rota(
+            "/api/gerar",
+            &format!("{CHAVE}&valor=10%2C50"),
+            Some("text/jsonw"),
+            false,
+        );
+        assert_eq!(r.status, 200);
+        assert!(r.corpo.starts_with("{codigo:\"000201"), "{}", r.corpo);
+        assert!(r.corpo.contains("valor:10.50 BRL"), "{}", r.corpo);
+        assert!(r.corpo.contains("tipo_chave:\"CPF\""));
+    }
+
+    #[test]
+    fn erro_em_jsonw_segue_o_formato_pedido() {
+        let r = rota("/api/gerar", "nome=Ana", Some("text/jsonw"), false);
+        assert_eq!(r.status, 400);
+        assert_eq!(r.tipo, "text/jsonw; charset=utf-8");
+        assert!(
+            r.corpo.contains("mensagem:\"chave Pix é obrigatório.\""),
+            "{}",
+            r.corpo
+        );
     }
 
     #[test]
@@ -332,21 +373,5 @@ mod testes {
             ]
         );
         assert_eq!(parametros(""), Vec::new());
-    }
-
-    #[test]
-    fn texto_json_escapa_aspas_barras_e_controle() {
-        assert_eq!(
-            texto_json("a\"b\\c\nd\re\tf"),
-            "\"a\\\"b\\\\c\\nd\\re\\tf\""
-        );
-        assert_eq!(texto_json("\u{1}"), "\"\\u0001\"");
-        assert_eq!(texto_json("São"), "\"São\"");
-    }
-
-    #[test]
-    fn opcional_json_vira_null_quando_nao_ha_valor() {
-        assert_eq!(opcional_json(None), "null");
-        assert_eq!(opcional_json(Some("x")), "\"x\"");
     }
 }

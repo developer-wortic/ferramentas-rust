@@ -8,7 +8,7 @@ default-members = ["crates/*"]
 [workspace.package]
 version = "2.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/developer-wortic/ferramentas-rust"
 authors = ["Wortic <dev@wortic.com.br>"]

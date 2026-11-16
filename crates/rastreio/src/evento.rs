@@ -297,7 +297,8 @@ pub fn corpo(eventos: &[Evento], test_event_code: Option<&str>) -> String {
         test_event_code: Option<&'a str>,
     }
     serde_json::to_string(&Lote {
-        // borda-json: corpo da Graph API da Meta, que só fala JSON
+        // borda-json: API de Conversões da Meta (o lote da Graph API)
+        // borda-json: API de Conversões da Meta (o lote que vai para a Graph API, que só fala JSON)
         data: eventos,
         test_event_code,
     })
@@ -331,7 +332,9 @@ fn event_id_valido(id: &str) -> bool {
     !id.is_empty() && id.len() <= MAX_EVENT_ID && !id.chars().any(char::is_control)
 }
 
-fn moeda_valida(moeda: &str) -> Option<String> {
+/// A moeda como código ISO de três letras, em maiúscula (`brl` vira `BRL`). Outra coisa não passa.
+#[must_use]
+pub fn moeda_valida(moeda: &str) -> Option<String> {
     let maiuscula = moeda.trim().to_ascii_uppercase();
     (maiuscula.len() == 3 && maiuscula.chars().all(|c| c.is_ascii_alphabetic()))
         .then_some(maiuscula)

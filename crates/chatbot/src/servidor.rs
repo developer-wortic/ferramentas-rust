@@ -2,6 +2,9 @@
 //! Rotas públicas (o chat e o widget): `/widget.js`, `POST /api/chat`, `POST /api/encerrar`.
 //! Rotas locais (a administração, só a partir desta máquina): `/`, `/demo`, `/api/config`, `/api/chave`,
 //! `/api/testar`, `/api/roteiro` e `/api/leads`. A chave nunca volta na resposta.
+//!
+//! Formato: a borda é JSON (o navegador e o widget). Quem pede `Accept: text/jsonw` ou `?formato=jsonw` recebe o
+//! mesmo registro em jsonW-texto; `/api/leads` também em arquivo `.jsw` (`?formato=jsw` ou `Accept: application/jsonw`).
 
 use std::collections::HashMap;
 use std::fs;
@@ -12,13 +15,16 @@ use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde_json::{Value, json}; // borda-json: a tela (navegador) e o widget falam JSON com este servidor
+use serde_json::{Value, json}; // borda-json: navegador (a tela e o widget falam JSON com este servidor)
 use tiny_http::{Header, Method, Request, Response, Server};
+use wortic_base::Formato;
+use wortic_base::formato::{TIPO_ARQUIVO, TIPO_JSON, TIPO_TEXTO};
 
 use crate::atendimento::{Atendimento, ErroChat, Limites, Sessoes};
 use crate::configuracao::Configuracao;
 use crate::erro::Erro;
-use crate::lead::Leads;
+use crate::lead::{self, Lead, Leads};
+use crate::migracao;
 use crate::provedor::{self, Ajustes, Conversa, Mensagem, Papel, Segredo, Tipo, Transporte};
 use crate::roteiro::{self, Roteiro};
 
@@ -73,16 +79,26 @@ impl Resposta {
     }
 
     fn json(status: u16, valor: &Value) -> Self {
-        // borda-json: resposta em JSON para a tela e o widget
-        Self::texto(
-            status,
-            "application/json; charset=utf-8",
-            &valor.to_string(),
-        )
+        // borda-json: navegador (resposta JSON para a tela e o widget; o jsonW sai depois, em `na_forma`)
+        Self::texto(status, TIPO_JSON, &valor.to_string())
     }
 
     fn erro(status: u16, codigo: &str, mensagem: &str) -> Self {
         Self::json(status, &json!({"erro": codigo, "mensagem": mensagem})) // borda-json: erro em JSON
+    }
+
+    /// Troca a forma de uma resposta JSON pela pedida (jsonW-texto). Respostas que já não são JSON (a tela, o
+    /// widget, o `.jsw`) passam como estão.
+    fn na_forma(self, formato: Formato) -> Self {
+        if formato == Formato::Json || self.tipo != TIPO_JSON {
+            return self;
+        }
+        let json = String::from_utf8_lossy(&self.corpo).into_owned();
+        Self {
+            tipo: formato.tipo_do_corpo(),
+            corpo: formato.corpo(json).into_bytes(),
+            ..self
+        }
     }
 
     fn com(mut self, nome: &'static str, valor: impl Into<String>) -> Self {
@@ -116,15 +132,18 @@ pub struct Preparado {
     pub avisos: Vec<String>,
 }
 
-/// Lê o roteiro (ou o de exemplo, se o arquivo não existir), abre a porta e monta os avisos. Não serve ainda.
+/// Migra o roteiro antigo (TOML) se for o caso, lê o roteiro (ou o de exemplo, se o arquivo não existir), abre a porta
+/// e monta os avisos. Não serve ainda.
 ///
 /// # Errors
 ///
-/// Devolve a mensagem quando o roteiro não lê ou a porta não abre.
-pub fn preparar(configuracao: Configuracao) -> Result<Preparado, String> {
+/// Devolve a mensagem quando o roteiro não lê, a migração falha ou a porta não abre.
+pub fn preparar(mut configuracao: Configuracao) -> Result<Preparado, String> {
+    let (caminho, mut avisos) = migracao::roteiro(&configuracao.roteiro)?;
+    configuracao.roteiro = caminho;
     let (roteiro, sem_arquivo) = carregar_roteiro(&configuracao.roteiro)?;
     let endereco = format!("{}:{}", configuracao.endereco, configuracao.porta);
-    let servidor = Server::http(&endereco)
+    let servidor = wortic_base::http::servidor(&endereco)
         .map_err(|e| format!("não consegui abrir a porta {}: {e}", configuracao.porta))?;
     // A porta real, para o aviso mostrar o endereço de verdade mesmo quando PORTA=0 (o sistema escolhe).
     let porta_real = servidor
@@ -132,7 +151,7 @@ pub fn preparar(configuracao: Configuracao) -> Result<Preparado, String> {
         .to_ip()
         .map_or(configuracao.porta, |a| a.port());
     let url = format!("http://{}:{porta_real}/", configuracao.endereco);
-    let mut avisos = vec![format!("chatbot no ar em {url}")];
+    avisos.insert(0, format!("chatbot no ar em {url}"));
     if let Some(caminho) = sem_arquivo {
         avisos.push(format!(
             "AVISO: {caminho} não existe; usando o roteiro de exemplo."
@@ -167,19 +186,32 @@ pub fn iniciar(preparado: Preparado) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Ponto de entrada do binário: configuração, preparação e serviço. Erros vão para o stderr.
+/// Ponto de entrada do binário: migração da configuração antiga, configuração, preparação e serviço.
+/// Erros vão para o stderr.
 pub fn principal<I>(ambiente: I) -> ExitCode
 where
     I: IntoIterator<Item = (String, String)>,
 {
     let ambiente: HashMap<String, String> = ambiente.into_iter().collect();
-    Configuracao::ler(&ambiente).and_then(preparar).map_or_else(
+    let migrada = migracao::configuracao(&Configuracao::pasta_de_dados(&ambiente));
+    let resultado = migrada.and_then(|avisos| {
+        Configuracao::ler(&ambiente)
+            .and_then(preparar)
+            .map(|preparado| com_avisos_antes(preparado, avisos))
+    });
+    resultado.map_or_else(
         |erro| {
             eprintln!("{erro}");
             ExitCode::FAILURE
         },
         iniciar,
     )
+}
+
+/// Põe os avisos da migração antes dos avisos de partida, na ordem em que aconteceram.
+fn com_avisos_antes(mut preparado: Preparado, avisos: Vec<String>) -> Preparado {
+    preparado.avisos.splice(0..0, avisos);
+    preparado
 }
 
 /// Roteiro do caminho dado. Sem arquivo, usa o de exemplo e devolve o caminho para o aviso.
@@ -210,18 +242,33 @@ fn atender(mut pedido: Request, estado: &Estado) {
 fn rotear(pedido: &mut Request, estado: &Estado) -> Resposta {
     let alvo = pedido.url().split('?').next().unwrap_or("/").to_string();
     let metodo = pedido.method().clone();
-    if matches!(alvo.as_str(), "/widget.js" | "/api/chat" | "/api/encerrar") {
+    let formato = formato_do_pedido(pedido);
+    let resposta = if matches!(alvo.as_str(), "/widget.js" | "/api/chat" | "/api/encerrar") {
         let origem = valor_do_cabecalho(pedido, "origin");
-        return rota_publica(pedido, estado, &metodo, &alvo, origem.as_deref());
-    }
-    if !e_local(pedido) {
-        return Resposta::erro(
+        rota_publica(pedido, estado, &metodo, &alvo, origem.as_deref())
+    } else if !e_local(pedido) {
+        Resposta::erro(
             403,
             "so_local",
             "A administração só responde a partir deste computador.",
-        );
-    }
-    rota_local(pedido, estado, &metodo, &alvo)
+        )
+    } else {
+        rota_local(pedido, estado, &metodo, &alvo, formato)
+    };
+    resposta.na_forma(formato)
+}
+
+/// O formato pedido: `?formato=` vence o `Accept`; sem nenhum, JSON (a borda do navegador).
+fn formato_do_pedido(pedido: &Request) -> Formato {
+    let accept = valor_do_cabecalho(pedido, "accept");
+    let consulta = pedido
+        .url()
+        .split_once('?')
+        .map_or("", |(_, consulta)| consulta);
+    Formato::do_pedido(
+        accept.as_deref(),
+        wortic_base::formato::parametro(consulta, "formato"),
+    )
 }
 
 fn rota_publica(
@@ -247,18 +294,22 @@ fn rota_publica(
     }
 }
 
-fn rota_local(pedido: &mut Request, estado: &Estado, metodo: &Method, alvo: &str) -> Resposta {
+fn rota_local(
+    pedido: &mut Request,
+    estado: &Estado,
+    metodo: &Method,
+    alvo: &str,
+    formato: Formato,
+) -> Resposta {
     match (metodo, alvo) {
         (Method::Get, "/") => Resposta::texto(200, "text/html; charset=utf-8", ADMINISTRACAO),
         (Method::Get, "/demo") => Resposta::texto(200, "text/html; charset=utf-8", DEMONSTRACAO),
         (Method::Get, "/api/config") => configuracao_atual(estado),
         (Method::Post, "/api/chave") => salvar_chave(pedido, estado),
         (Method::Post, "/api/testar") => testar(pedido, estado),
-        (Method::Get, "/api/roteiro") => roteiro_atual(estado),
+        (Method::Get, "/api/roteiro") => roteiro_atual(estado, formato),
         (Method::Post | Method::Put, "/api/roteiro") => salvar_roteiro(pedido, estado),
-        (Method::Get, "/api/leads") => {
-            Resposta::json(200, &json!({"leads": estado.leads.listar()}))
-        } // borda-json
+        (Method::Get, "/api/leads") => leads_atual(estado, formato),
         _ => Resposta::erro(404, "nao_encontrado", "esta rota não existe"),
     }
 }
@@ -316,7 +367,7 @@ fn corpo_json(pedido: &mut Request) -> Result<Value, Resposta> {
                 "não consegui ler o corpo da requisição",
             )
         })?;
-    serde_json::from_str(&texto) // borda-json: corpo que a tela ou o widget enviam
+    serde_json::from_str(&texto) // borda-json: navegador (corpo que a tela ou o widget enviam)
         .map_err(|_| Resposta::erro(400, "json_invalido", "o corpo precisa ser JSON"))
 }
 
@@ -452,28 +503,32 @@ fn testar(pedido: &mut Request, estado: &Estado) -> Resposta {
     }
 }
 
-fn roteiro_atual(estado: &Estado) -> Resposta {
+/// O roteiro em jsonW-texto. Quem pede jsonW recebe o texto puro; a tela recebe `{"jsonw": "..."}`.
+fn roteiro_atual(estado: &Estado, formato: Formato) -> Resposta {
     let caminho = estado
         .configuracao
         .read()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .roteiro
         .clone();
-    match fs::read_to_string(&caminho) {
-        Ok(texto) => Resposta::json(200, &json!({"toml": texto})), // borda-json
-        Err(erro) if erro.kind() == io::ErrorKind::NotFound => {
-            Resposta::json(200, &json!({"toml": roteiro::EXEMPLO})) // borda-json
-        }
-        Err(erro) => Resposta::erro(500, "leitura", &erro.to_string()),
+    let texto = match fs::read_to_string(&caminho) {
+        Ok(texto) => texto,
+        Err(erro) if erro.kind() == io::ErrorKind::NotFound => roteiro::EXEMPLO.to_string(),
+        Err(erro) => return Resposta::erro(500, "leitura", &erro.to_string()),
+    };
+    if formato != Formato::Json {
+        return Resposta::texto(200, TIPO_TEXTO, &texto);
     }
+    Resposta::json(200, &json!({"jsonw": texto})) // borda-json: a tela recebe o texto dentro de JSON
 }
 
+/// Grava o roteiro (jsonW-texto) depois de conferir o esquema. Troca atômica: o arquivo em uso nunca fica pela metade.
 fn salvar_roteiro(pedido: &mut Request, estado: &Estado) -> Resposta {
     let corpo = match corpo_json(pedido) {
         Ok(corpo) => corpo,
         Err(resposta) => return resposta,
     };
-    let texto = texto_do_corpo(&corpo, "toml");
+    let texto = texto_do_corpo(&corpo, "jsonw");
     let novo = match Roteiro::ler(texto) {
         Ok(novo) => novo,
         Err(motivo) => return Resposta::erro(400, "roteiro_invalido", &motivo),
@@ -484,7 +539,7 @@ fn salvar_roteiro(pedido: &mut Request, estado: &Estado) -> Resposta {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .roteiro
         .clone();
-    if let Err(erro) = fs::write(&caminho, texto) {
+    if let Err(erro) = wortic_base::config::gravar(&caminho, texto, false) {
         return Resposta::erro(500, "gravacao", &erro.to_string());
     }
     *estado
@@ -492,6 +547,31 @@ fn salvar_roteiro(pedido: &mut Request, estado: &Estado) -> Resposta {
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = novo;
     Resposta::json(200, &json!({"ok": true})) // borda-json
+}
+
+/// Os leads guardados. Em `.jsw` (`formato=jsw`) é o arquivo coluna com o esquema de lead; nos outros formatos, a lista.
+fn leads_atual(estado: &Estado, formato: Formato) -> Resposta {
+    let leads = estado.leads.listar();
+    if formato != Formato::Arquivo {
+        return Resposta::json(200, &json!({"leads": leads})); // borda-json: a tela e a forma pedida em `na_forma`
+    }
+    if leads.is_empty() {
+        // um .jsw sem linha não é lido pela libjsonw ("arquivo curto demais"): sem lead, não há o que exportar
+        return Resposta::erro(404, "sem_leads", "ainda não há leads para exportar");
+    }
+    let registros: Vec<String> = leads.iter().map(Lead::registro_jsonw).collect();
+    match wortic_base::arquivo::bytes(lead::ESQUEMA, registros.iter().map(String::as_str)) {
+        Ok(bytes) => Resposta {
+            status: 200,
+            tipo: TIPO_ARQUIVO,
+            corpo: bytes,
+            extras: vec![(
+                "content-disposition",
+                "attachment; filename=\"leads.jsw\"".into(),
+            )],
+        },
+        Err(motivo) => Resposta::erro(500, "arquivo", &motivo),
+    }
 }
 
 /// Monta o atendimento com a configuração atual. Sem chave, responde 503 e não chama nada.
@@ -608,6 +688,49 @@ mod testes {
     }
 
     #[test]
+    fn avisos_da_migracao_vem_antes_dos_de_partida() {
+        let preparado = Preparado {
+            servidor: Arc::new(Server::http("127.0.0.1:0").unwrap()),
+            estado: Arc::new(Estado::novo(
+                Configuracao {
+                    provedor: Tipo::OpenAi,
+                    modelo: "m".into(),
+                    chave: None,
+                    base: None,
+                    origens: Vec::new(),
+                    porta: 0,
+                    endereco: "127.0.0.1".into(),
+                    dados: "dados".into(),
+                    roteiro: "roteiro.jsw.txt".into(),
+                },
+                Roteiro::ler(roteiro::EXEMPLO).unwrap(),
+            )),
+            avisos: vec!["chatbot no ar".into()],
+        };
+        let junto = com_avisos_antes(preparado, vec!["migrei x".into()]);
+        assert_eq!(junto.avisos, vec!["migrei x", "chatbot no ar"]);
+        junto.servidor.unblock();
+    }
+
+    #[test]
+    fn na_forma_troca_so_o_json_e_deixa_o_resto_como_esta() {
+        let json = Resposta::json(200, &json!({"nota": 80, "nome": "Ana"}));
+        let texto = json.na_forma(Formato::Texto);
+        assert_eq!(texto.tipo, TIPO_TEXTO);
+        assert_eq!(
+            String::from_utf8(texto.corpo).unwrap(),
+            r#"{nome:"Ana",nota:80}"#
+        );
+        let igual = Resposta::json(200, &json!({"a": 1})).na_forma(Formato::Json);
+        assert_eq!(igual.tipo, TIPO_JSON);
+        assert_eq!(String::from_utf8(igual.corpo).unwrap(), r#"{"a":1}"#);
+        let pagina =
+            Resposta::texto(200, "text/html; charset=utf-8", "<p>oi</p>").na_forma(Formato::Texto);
+        assert_eq!(pagina.tipo, "text/html; charset=utf-8");
+        assert_eq!(pagina.corpo, b"<p>oi</p>");
+    }
+
+    #[test]
     fn origem_sem_lista_nao_ganha_cors() {
         let estado = Estado::novo(
             Configuracao {
@@ -619,7 +742,7 @@ mod testes {
                 porta: 1,
                 endereco: "127.0.0.1".into(),
                 dados: "dados".into(),
-                roteiro: "roteiro.toml".into(),
+                roteiro: "roteiro.jsw.txt".into(),
             },
             Roteiro::ler(roteiro::EXEMPLO).unwrap(),
         );

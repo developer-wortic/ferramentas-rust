@@ -1,17 +1,20 @@
-//! Configuração do bot. Variáveis de ambiente têm prioridade sobre o arquivo `dados/configuracao.toml`,
-//! onde a tela de administração guarda a chave, com permissão 600 (só o dono lê).
+//! Configuração do bot. Variáveis de ambiente têm prioridade sobre o arquivo `dados/configuracao.jsw.txt` (jsonW-texto),
+//! onde a tela de administração guarda a chave, com permissão 600 (só o dono lê). O arquivo passa pelo esquema da
+//! libjsonw (`wortic_base::config`), e a gravação é troca atômica.
 
 use std::collections::HashMap;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::provedor::{Segredo, Tipo};
 
-/// Nome do arquivo de configuração dentro da pasta de dados.
-pub const ARQUIVO: &str = "configuracao.toml";
+/// Nome do arquivo de configuração dentro da pasta de dados (jsonW-texto).
+pub const ARQUIVO: &str = "configuracao.jsw.txt";
+
+/// Esquema do arquivo de configuração. Tudo opcional: o ambiente ou o padrão completam o que faltar.
+pub const ESQUEMA: &str = "provedor:texto?,modelo:texto?,chave:texto?";
 
 /// Tudo o que o processo precisa para subir.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,25 +31,35 @@ pub struct Configuracao {
     pub roteiro: PathBuf,
 }
 
+/// O conteúdo do arquivo de configuração. Também é o que a migração do TOML antigo lê.
 #[derive(Debug, Default, Deserialize, Serialize)]
-struct Arquivo {
-    provedor: Option<String>,
-    modelo: Option<String>,
-    chave: Option<String>,
+pub(crate) struct Arquivo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provedor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modelo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chave: Option<String>,
 }
 
 impl Configuracao {
+    /// Pasta de dados: `CHATBOT_DADOS`, ou `dados` no diretório atual.
+    #[must_use]
+    pub fn pasta_de_dados(ambiente: &HashMap<String, String>) -> PathBuf {
+        PathBuf::from(
+            ambiente
+                .get("CHATBOT_DADOS")
+                .map_or("dados", String::as_str),
+        )
+    }
+
     /// Lê o ambiente dado e o arquivo de dados. Sem variável, usa o padrão.
     ///
     /// # Errors
     ///
     /// Devolve a mensagem quando o provedor não existe, a porta é inválida ou o arquivo não lê.
     pub fn ler(ambiente: &HashMap<String, String>) -> Result<Self, String> {
-        let dados = PathBuf::from(
-            ambiente
-                .get("CHATBOT_DADOS")
-                .map_or("dados", String::as_str),
-        );
+        let dados = Self::pasta_de_dados(ambiente);
         let arquivo = ler_arquivo(&dados.join(ARQUIVO))?;
         let codigo = ambiente
             .get("CHATBOT_PROVEDOR")
@@ -94,7 +107,7 @@ impl Configuracao {
         let roteiro = PathBuf::from(
             ambiente
                 .get("CHATBOT_ROTEIRO")
-                .map_or("roteiro.toml", String::as_str),
+                .map_or("roteiro.jsw.txt", String::as_str),
         );
         Ok(Self {
             provedor,
@@ -109,7 +122,7 @@ impl Configuracao {
         })
     }
 
-    /// Grava a escolha do provedor, o modelo e a chave no arquivo, com permissão 600.
+    /// Grava a escolha do provedor, o modelo e a chave no arquivo jsonW-texto, com permissão 600.
     ///
     /// # Errors
     ///
@@ -127,39 +140,35 @@ impl Configuracao {
             modelo: Some(modelo.to_string()),
             chave: Some(chave.to_string()),
         };
-        // Um Arquivo só tem campos de texto opcionais, então a serialização não falha.
-        let texto = toml::to_string(&arquivo).unwrap_or_default();
-        let caminho = dados.join(ARQUIVO);
-        fs::write(&caminho, texto)
-            .map_err(|e| format!("não consegui gravar a configuração: {e}"))?;
-        restringir(&caminho).map_err(erro_de_permissao)
+        gravar_arquivo(&dados.join(ARQUIVO), &arquivo)
     }
 }
 
-/// Mensagem quando a permissão 600 não pode ser aplicada.
-#[allow(clippy::needless_pass_by_value)]
-fn erro_de_permissao(erro: io::Error) -> String {
-    format!("não consegui fechar a permissão do arquivo: {erro}")
+/// Grava o arquivo de configuração com troca atômica e permissão 600 (a base cuida das duas coisas).
+///
+/// # Errors
+///
+/// Devolve a mensagem quando o arquivo não pode ser gravado.
+pub(crate) fn gravar_arquivo(caminho: &Path, arquivo: &Arquivo) -> Result<(), String> {
+    let json = serde_json::to_string(arquivo).expect("a configuração sempre vira JSON"); // borda-json: forma interna, sem JSON para fora
+    let texto = format!(
+        "// Configuração do chatbot. A administração (painel) escreve este arquivo. A chave fica aqui, com permissão 600.\n{}\n",
+        wortic_base::texto::de_json(&json)
+    );
+    wortic_base::config::gravar(caminho, &texto, true)
+        .map_err(|e| format!("não consegui gravar a configuração: {e}"))
 }
 
+/// Lê o arquivo pelo esquema. Ausente vale o padrão; qualquer erro (sintaxe, tipo, leitura) vira `configuração ilegível`.
 fn ler_arquivo(caminho: &Path) -> Result<Arquivo, String> {
-    match fs::read_to_string(caminho) {
-        Ok(texto) => toml::from_str(&texto).map_err(|e| format!("configuração ilegível: {e}")),
-        Err(erro) if erro.kind() == io::ErrorKind::NotFound => Ok(Arquivo::default()),
-        Err(erro) => Err(format!("não consegui ler a configuração: {erro}")),
+    match wortic_base::config::ler(caminho, ESQUEMA) {
+        Ok(None) => Ok(Arquivo::default()),
+        Ok(Some(json)) => {
+            serde_json::from_str(&json) // borda-json: registro que a libjsonw já conferiu
+                .map_err(|e| format!("configuração ilegível: {e}"))
+        }
+        Err(erro) => Err(format!("configuração ilegível: {erro}")),
     }
-}
-
-/// Só o dono do arquivo lê e escreve (600).
-#[cfg(unix)]
-fn restringir(caminho: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(caminho, fs::Permissions::from_mode(0o600))
-}
-
-#[cfg(not(unix))]
-fn restringir(_caminho: &Path) -> io::Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]
@@ -190,7 +199,7 @@ mod testes {
         assert_eq!(c.porta, 8080);
         assert_eq!(c.endereco, "127.0.0.1");
         assert_eq!(c.origens, Vec::<String>::new());
-        assert_eq!(c.roteiro, PathBuf::from("roteiro.toml"));
+        assert_eq!(c.roteiro, PathBuf::from("roteiro.jsw.txt"));
         assert!(c.base.is_none());
     }
 
@@ -219,7 +228,7 @@ mod testes {
             ),
             ("PORTA", "9100"),
             ("ENDERECO", "0.0.0.0"),
-            ("CHATBOT_ROTEIRO", "outro.toml"),
+            ("CHATBOT_ROTEIRO", "outro.jsw.txt"),
         ]))
         .unwrap();
         assert_eq!(com_ambiente.provedor, Tipo::Anthropic);
@@ -235,7 +244,7 @@ mod testes {
         );
         assert_eq!(com_ambiente.porta, 9100);
         assert_eq!(com_ambiente.endereco, "0.0.0.0");
-        assert_eq!(com_ambiente.roteiro, PathBuf::from("outro.toml"));
+        assert_eq!(com_ambiente.roteiro, PathBuf::from("outro.jsw.txt"));
         let _ = fs::remove_dir_all(&pasta);
     }
 
@@ -273,6 +282,18 @@ mod testes {
     }
 
     #[test]
+    fn pasta_de_dados_vem_do_ambiente_ou_do_padrao() {
+        assert_eq!(
+            Configuracao::pasta_de_dados(&ambiente(&[])),
+            PathBuf::from("dados")
+        );
+        assert_eq!(
+            Configuracao::pasta_de_dados(&ambiente(&[("CHATBOT_DADOS", "outra")])),
+            PathBuf::from("outra")
+        );
+    }
+
+    #[test]
     fn arquivo_quebrado_e_recusado() {
         let pasta = pasta_temporaria("quebrado");
         fs::create_dir_all(&pasta).unwrap();
@@ -284,12 +305,23 @@ mod testes {
     }
 
     #[test]
+    fn arquivo_com_tipo_errado_e_recusado_pela_libjsonw() {
+        let pasta = pasta_temporaria("tipo-errado");
+        fs::create_dir_all(&pasta).unwrap();
+        fs::write(pasta.join(ARQUIVO), "{provedor: 7}").unwrap();
+        let erro = Configuracao::ler(&ambiente(&[("CHATBOT_DADOS", pasta.to_str().unwrap())]))
+            .unwrap_err();
+        assert!(erro.contains("configuração ilegível"), "{erro}");
+        let _ = fs::remove_dir_all(&pasta);
+    }
+
+    #[test]
     fn arquivo_que_nao_abre_e_recusado() {
         let pasta = pasta_temporaria("pasta-no-lugar");
         fs::create_dir_all(pasta.join(ARQUIVO)).unwrap();
         let erro = Configuracao::ler(&ambiente(&[("CHATBOT_DADOS", pasta.to_str().unwrap())]))
             .unwrap_err();
-        assert!(erro.contains("não consegui ler a configuração"));
+        assert!(erro.contains("não consegui ler"), "{erro}");
         let _ = fs::remove_dir_all(&pasta);
     }
 
@@ -321,6 +353,23 @@ mod testes {
     }
 
     #[test]
+    fn regravar_sobre_arquivo_com_permissao_aberta_volta_para_600() {
+        use std::os::unix::fs::PermissionsExt;
+        let pasta = pasta_temporaria("regravar");
+        fs::create_dir_all(&pasta).unwrap();
+        let antigo = pasta.join(ARQUIVO);
+        fs::write(&antigo, "{provedor:\"openai\"}").unwrap();
+        fs::set_permissions(&antigo, fs::Permissions::from_mode(0o644)).unwrap();
+        Configuracao::salvar_escolha(&pasta, Tipo::Groq, "m", "chave-de-teste-456").unwrap();
+        let modo = fs::metadata(&antigo).unwrap().permissions().mode() & 0o777;
+        assert_eq!(modo, 0o600);
+        let texto = fs::read_to_string(&antigo).unwrap();
+        assert!(texto.starts_with("// Configuração do chatbot"), "{texto}");
+        assert!(texto.contains("chave:\"chave-de-teste-456\""), "{texto}");
+        let _ = fs::remove_dir_all(&pasta);
+    }
+
+    #[test]
     fn salvar_em_lugar_impossivel_e_recusado() {
         let arquivo_no_caminho =
             std::env::temp_dir().join(format!("chatbot-cfg-arquivo-{}", std::process::id()));
@@ -329,13 +378,6 @@ mod testes {
             Configuracao::salvar_escolha(&arquivo_no_caminho, Tipo::OpenAi, "m", "c").unwrap_err();
         assert!(erro.contains("não consegui criar a pasta"));
         let _ = fs::remove_file(&arquivo_no_caminho);
-    }
-
-    #[test]
-    fn restringir_arquivo_que_nao_existe_e_erro() {
-        let inexistente = std::env::temp_dir().join("chatbot-nao-existe-xyz");
-        assert!(restringir(&inexistente).is_err());
-        assert!(erro_de_permissao(io::Error::other("negado")).contains("negado"));
     }
 
     #[test]

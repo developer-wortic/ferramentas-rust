@@ -1,0 +1,15 @@
+{rotulo:"antes",ferramenta:"cnpj",caminho:"/",pedidos:2000,erros:0,segundos:20.564,por_segundo:97,p50_us:41008,p99_us:43450}
+{rotulo:"antes",ferramenta:"cnpj",caminho:"/api/config",pedidos:2000,erros:0,segundos:0.125,por_segundo:15955,p50_us:13,p99_us:3978}
+{rotulo:"antes",ferramenta:"cnpj",caminho:"/api/empresa/11111111111111",pedidos:2000,erros:0,segundos:0.306,por_segundo:6532,p50_us:29,p99_us:2248}
+{rotulo:"antes",ferramenta:"cnpj",partida_ms:22,pico_memoria_kb:3552}
+{rotulo:"antes",ferramenta:"chatbot",caminho:"/",pedidos:2000,erros:0,segundos:20.983,por_segundo:95,p50_us:41949,p99_us:47398}
+{rotulo:"antes",ferramenta:"chatbot",caminho:"/api/config",pedidos:2000,erros:0,segundos:0.314,por_segundo:6363,p50_us:74,p99_us:3172}
+{rotulo:"antes",ferramenta:"chatbot",caminho:"/widget.js",pedidos:2000,erros:0,segundos:20.948,por_segundo:95,p50_us:41980,p99_us:44972}
+{rotulo:"antes",ferramenta:"chatbot",partida_ms:49,pico_memoria_kb:4388}
+{rotulo:"antes",ferramenta:"pix",caminho:"/",pedidos:2000,erros:0,segundos:20.943,por_segundo:95,p50_us:41978,p99_us:45993}
+{rotulo:"antes",ferramenta:"pix",caminho:"/api/config",pedidos:2000,erros:0,segundos:0.335,por_segundo:5965,p50_us:14,p99_us:2906}
+{rotulo:"antes",ferramenta:"pix",caminho:"/api/gerar?chave=teste%40exemplo.com.br&nome=Loja%20Exemplo&cidade=Porto%20Alegre&valor=12.50&txid=PEDIDO42",pedidos:2000,erros:0,segundos:20.798,por_segundo:96,p50_us:41066,p99_us:45865}
+{rotulo:"antes",ferramenta:"pix",partida_ms:60,pico_memoria_kb:3364}
+{rotulo:"antes",ferramenta:"rastreio",caminho:"/",pedidos:2000,erros:0,segundos:20.665,por_segundo:97,p50_us:41014,p99_us:44233}
+{rotulo:"antes",ferramenta:"rastreio",caminho:"/r?utm_source=facebook&utm_medium=cpc&utm_campaign=bf&fbclid=AbC123",pedidos:2000,erros:0,segundos:0.187,por_segundo:10707,p50_us:18,p99_us:2657}
+{rotulo:"antes",ferramenta:"rastreio",partida_ms:11,pico_memoria_kb:3660}

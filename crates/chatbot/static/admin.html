@@ -100,7 +100,7 @@ pre{background:#f5f5f7;border-radius:10px;padding:12px 14px;overflow-x:auto;font
       <div class="numero" id="n3">3</div>
       <div>
         <h2>Colar a chave</h2>
-        <p class="suave">Ela é guardada em <code>dados/configuracao.toml</code>, com permissão 600 (só o seu usuário lê). Também pode vir da variável <code>CHATBOT_CHAVE</code>.</p>
+        <p class="suave">Ela é guardada em <code>dados/configuracao.jsw.txt</code>, com permissão 600 (só o seu usuário lê). Também pode vir da variável <code>CHATBOT_CHAVE</code>.</p>
         <label for="chave">Chave de API</label>
         <div class="chave">
           <input id="chave" type="password" autocomplete="off" spellcheck="false" placeholder="cole a chave aqui">
@@ -136,8 +136,8 @@ pre{background:#f5f5f7;border-radius:10px;padding:12px 14px;overflow-x:auto;font
 
   <section class="bloco" aria-labelledby="roteiro">
     <h2 id="roteiro">Roteiro de prospecção</h2>
-    <p class="suave">Edite o texto em TOML. Diz quem é a empresa, o que vende, para quem, as perguntas de qualificação e quando passar para uma pessoa. Salve para valer na próxima conversa.</p>
-    <label for="texto-roteiro">roteiro.toml</label>
+    <p class="suave">Edite o texto em jsonW-texto: chave sem aspas, texto entre aspas, comentário com <code>//</code>, vírgula no fim de cada item. Diz quem é a empresa, o que vende, para quem, as perguntas de qualificação e quando passar para uma pessoa. Salve para valer na próxima conversa. O arquivo fica em <code>roteiro.jsw.txt</code>, e o formato é conferido antes de gravar.</p>
+    <label for="texto-roteiro">roteiro.jsw.txt</label>
     <textarea id="texto-roteiro" spellcheck="false"></textarea>
     <div class="acoes">
       <button id="salvar-roteiro" type="button">Salvar roteiro</button>
@@ -151,6 +151,7 @@ pre{background:#f5f5f7;border-radius:10px;padding:12px 14px;overflow-x:auto;font
     <p class="suave">Resumos das conversas encerradas, guardados só na memória deste processo. Ao reiniciar, a lista começa vazia.</p>
     <div class="acoes">
       <button id="atualizar-leads" type="button" class="claro">Atualizar lista</button>
+      <a class="botao claro" href="/api/leads?formato=jsw">Baixar leads em .jsw</a>
     </div>
     <div class="tab-wrap">
       <table>
@@ -307,7 +308,7 @@ el("salvar").addEventListener("click", async () => {
 async function carregarRoteiro() {
   const { status, dados } = await api("/api/roteiro");
   if (status === 200) {
-    el("texto-roteiro").value = dados.toml;
+    el("texto-roteiro").value = dados.jsonw;
     aviso(el("msg-roteiro"), "");
   } else {
     aviso(el("msg-roteiro"), dados.mensagem || "Não consegui ler o roteiro.", "erro");
@@ -315,7 +316,7 @@ async function carregarRoteiro() {
 }
 
 el("salvar-roteiro").addEventListener("click", async () => {
-  const { status, dados } = await api("/api/roteiro", "POST", { toml: el("texto-roteiro").value });
+  const { status, dados } = await api("/api/roteiro", "POST", { jsonw: el("texto-roteiro").value });
   if (status === 200) {
     aviso(el("msg-roteiro"), "Roteiro salvo. Vale para as próximas conversas.", "ok");
   } else {

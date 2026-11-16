@@ -13,6 +13,7 @@ name = "wortic"
 path = "src/main.rs"
 
 [dependencies]
+serde_json.workspace = true
 wortic-base.workspace = true
 cadastro-cnpj.workspace = true
 chatbot-prospeccao.workspace = true
@@ -20,6 +21,5 @@ pix-brcode.workspace = true
 rastreio-capi.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 tiny_http.workspace = true
 ureq.workspace = true

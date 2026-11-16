@@ -12,3 +12,4 @@ authors.workspace = true
 wortic-base.workspace = true
 tiny_http.workspace = true
 ureq.workspace = true
+serde_json.workspace = true

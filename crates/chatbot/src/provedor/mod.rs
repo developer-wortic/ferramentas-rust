@@ -12,7 +12,7 @@ mod transporte;
 use std::fmt;
 use std::time::Duration;
 
-use serde_json::Value; // borda-json: fala com a API do provedor (terceiro), que responde em JSON
+use serde_json::Value; // borda-json: API do provedor (fala com a API de terceiro, que responde em JSON)
 
 use crate::erro::Erro;
 use crate::sse;

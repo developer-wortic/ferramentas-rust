@@ -72,13 +72,19 @@
 pub mod atribuicao;
 pub mod captura;
 pub mod cli;
+pub mod configuracao;
 pub mod consentimento;
 pub mod cookie;
 pub mod dados;
 pub mod envio;
+pub mod esquemas;
 pub mod evento;
+pub mod exportar;
 pub mod identificadores;
+pub mod jsonw;
 pub mod modelo;
 pub mod painel;
+pub mod saida;
 #[cfg(test)]
 mod suporte;
+pub mod venda;

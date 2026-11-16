@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checar:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Formatação
+        run: cargo fmt --all --check
+
+      - name: Clippy (pedantic)
+        run: cargo clippy --workspace --all-targets -- -D warnings -W clippy::pedantic
+
+      - name: Testes
+        run: cargo test --workspace
+
+      - name: Binário único
+        run: |
+          cargo build --release
+          ls -l target/release/wortic
+          ./target/release/wortic versao

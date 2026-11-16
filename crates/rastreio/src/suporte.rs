@@ -1,6 +1,7 @@
 //! Suporte dos testes: um servidor falso que faz de conta que é a Graph API da Meta, e um cliente HTTP de teste.
 //! Nada sai da máquina. Os testes são determinísticos e não mandam evento a ninguém.
 
+use std::io::Read;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -82,6 +83,8 @@ pub fn falso(roteiro: Vec<Resp>) -> Falso {
 pub struct Visto {
     pub status: u16,
     pub corpo: String,
+    /// O corpo como veio, em bytes (o `.jsw` é binário).
+    pub bytes: Vec<u8>,
     pub tipo: Option<String>,
     cabecalhos: Vec<(String, String)>,
 }
@@ -141,6 +144,24 @@ pub fn pedir_form(url: &str, corpo: &str, cookies: &[&String]) -> Visto {
     enviar(pedido, Some(corpo))
 }
 
+/// Uma requisição com método e cabeçalhos próprios (`Accept`, `Content-Type`), para provar o formato da resposta.
+pub fn pedir_com(
+    metodo: &str,
+    url: &str,
+    corpo: Option<&str>,
+    cabecalhos: &[(&str, &str)],
+    cookies: &[&String],
+) -> Visto {
+    let mut pedido = agente().request(metodo, url);
+    for (nome, valor) in cabecalhos {
+        pedido = pedido.set(nome, valor);
+    }
+    if !cookies.is_empty() {
+        pedido = pedido.set("Cookie", &junta(cookies));
+    }
+    enviar(pedido, corpo)
+}
+
 fn junta(cookies: &[&String]) -> String {
     cookies
         .iter()
@@ -166,10 +187,13 @@ fn enviar(pedido: ureq::Request, corpo: Option<&str>) -> Visto {
             cabecalhos.push((nome.clone(), valor.to_string()));
         }
     }
-    let corpo = resposta.into_string().unwrap_or_default();
+    let mut bytes = Vec::new();
+    let _ = resposta.into_reader().read_to_end(&mut bytes);
+    let corpo = String::from_utf8_lossy(&bytes).into_owned();
     Visto {
         status,
         corpo,
+        bytes,
         tipo,
         cabecalhos,
     }

@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::erro::Erro;
-use serde_json::Value; // borda-json: corpo que vai para a API do provedor (terceiro)
+use serde_json::Value; // borda-json: API do provedor (corpo que vai para a API de terceiro)
 
 /// Fluxo de bytes da resposta, lido linha a linha pelo leitor de SSE.
 pub type Fluxo = BufReader<Box<dyn Read + Send + Sync>>;

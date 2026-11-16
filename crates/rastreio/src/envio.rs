@@ -253,17 +253,17 @@ pub fn base_segura(base: &str) -> bool {
 }
 
 fn recebidos(texto: &str) -> Option<u64> {
-    let corpo: serde_json::Value = serde_json::from_str(texto).ok()?; // borda-json: resposta da Graph API
+    let corpo: serde_json::Value = serde_json::from_str(texto).ok()?; // borda-json: API de Conversões da Meta (resposta)
     corpo.get("events_received")?.as_u64()
 }
 
 fn mensagem_da_meta(texto: &str, token: &str) -> String {
-    let corpo: Option<serde_json::Value> = serde_json::from_str(texto).ok(); // borda-json: erro da Graph API
+    let corpo: Option<serde_json::Value> = serde_json::from_str(texto).ok(); // borda-json: API de Conversões da Meta (erro)
     let mensagem = corpo
         .as_ref()
         .and_then(|c| c.get("error"))
         .and_then(|e| e.get("message"))
-        .and_then(serde_json::Value::as_str)
+        .and_then(serde_json::Value::as_str) // borda-json: API de Conversões da Meta (erro)
         .unwrap_or("sem detalhe");
     let limpa: String = mensagem
         .replace(token, TOKEN_OCULTO)

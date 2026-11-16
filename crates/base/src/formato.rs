@@ -81,11 +81,12 @@ impl Formato {
     }
 }
 
-/// O valor de um parâmetro numa consulta `a=1&formato=jsonw` (sem decodificar: os nomes de formato são ASCII).
+/// O valor de um parâmetro numa consulta (`a=1&formato=jsonw`, `?a=1` ou a URL inteira `/rota?a=1`), sem decodificar.
 #[must_use]
 pub fn parametro<'a>(consulta: &'a str, nome: &str) -> Option<&'a str> {
     consulta
-        .trim_start_matches('?')
+        .split_once('?')
+        .map_or(consulta, |(_, depois)| depois)
         .split('&')
         .filter_map(|par| par.split_once('='))
         .find(|(chave, _)| *chave == nome)
@@ -114,10 +115,7 @@ mod testes {
 
     #[test]
     fn corpo_em_texto_tira_as_aspas_das_chaves() {
-        assert_eq!(
-            Formato::Texto.corpo(r#"{"a":"b"}"#.into()),
-            r#"{a:"b"}"#
-        );
+        assert_eq!(Formato::Texto.corpo(r#"{"a":"b"}"#.into()), r#"{a:"b"}"#);
         assert_eq!(Formato::Json.corpo(r#"{"a":"b"}"#.into()), r#"{"a":"b"}"#);
     }
 
@@ -125,5 +123,6 @@ mod testes {
     fn parametro_da_consulta() {
         assert_eq!(parametro("?x=1&formato=jsonw", "formato"), Some("jsonw"));
         assert_eq!(parametro("x=1", "formato"), None);
+        assert_eq!(parametro("/api/leads?formato=jsw", "formato"), Some("jsw"));
     }
 }

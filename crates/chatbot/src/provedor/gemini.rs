@@ -1,7 +1,7 @@
 //! Google `Gemini` pela `generateContent` em modo de streaming: `POST {base}/models/{modelo}:streamGenerateContent?alt=sse`.
 //! A chave vai no cabeçalho `x-goog-api-key`, e não na URL, para não aparecer em log.
 
-use serde_json::{Value, json}; // borda-json: corpo e eventos trocados com a API do Gemini (terceiro)
+use serde_json::{Value, json}; // borda-json: API do provedor (Gemini: corpo e eventos)
 
 use super::{Ajustes, Conversa, MAX_TOKENS, Papel, Passo, Provedor, ler_fluxo, texto_de};
 use crate::erro::Erro;

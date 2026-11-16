@@ -1,32 +1,62 @@
 # Cadastro de clientes pelo CNPJ em Rust
 
 <!-- GIF -->
-![Demonstração: buscar uma empresa pelo nome e ver o cadastro se preencher](docs/demo.gif)
+![Demonstração: buscar uma empresa pelo nome e ver o cadastro se preencher](../../docs/cnpj/demo.gif)
 
 Digite o CNPJ ou o nome da empresa e o cadastro se preenche sozinho, com os dados abertos da Receita Federal.
 
-[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1d1d1f?style=flat-square)](LICENSE)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1d1d1f?style=flat-square)](../../LICENSE)
 ![Rust 2024](https://img.shields.io/badge/Rust-2024-1d1d1f?style=flat-square)
-[![Testes](https://github.com/developer-wortic/modelo-cadastro-cnpj-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/developer-wortic/modelo-cadastro-cnpj-rust/actions/workflows/ci.yml)
-Cobertura de linhas: 100% (87 testes).
+[![Testes](https://github.com/developer-wortic/ferramentas-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/developer-wortic/ferramentas-rust/actions/workflows/ci.yml)
+Cobertura de linhas: 98,7% (1.795 de 1.818 linhas, 133 testes).
 
 **[Pegar chave](https://cnpj.wortic.com/#planos)** · **[Ver planos](https://cnpj.wortic.com/#planos)**
 
 ## Três provas que você pode conferir
 
-1. **Os testes passam.** Rode `cargo test`. A cobertura de linhas da suíte é de 100% (87 testes).
+1. **Os testes passam.** Rode `cargo test`. A cobertura de linhas da suíte é de 98,7% (1.795 de 1.818 linhas, 133 testes).
 2. **A API responde agora.** `curl https://cnpj.wortic.com/cnpj/37853407000171` devolve a ficha da Wortic: `WORTIC LTDA`, situação `Ativa`.
 3. **A base é grande e aberta.** Ela tem 73,8 milhões de estabelecimentos, ativos e inativos, dos dados abertos da Receita Federal. Confira em [cnpj.wortic.com](https://cnpj.wortic.com).
 
 ## Início rápido
 
 ```sh
-git clone https://github.com/developer-wortic/modelo-cadastro-cnpj-rust
-cd modelo-cadastro-cnpj-rust
-cargo run --release
+git clone https://github.com/developer-wortic/ferramentas-rust
+cd ferramentas-rust
+cargo build --release
+./target/release/wortic cnpj
 ```
 
-Abra http://127.0.0.1:8080, digite `37.853.407/0001-71` (ou `wortic`) e pronto. Não precisa de cadastro nem de chave.
+Este cadastro é um subcomando do binário `wortic`, o mesmo para todas as ferramentas Wortic. Sem argumento, `wortic cnpj` sobe a tela e a API. Abra http://127.0.0.1:8080, digite `37.853.407/0001-71` (ou `wortic`) e pronto. Não precisa de cadastro nem de chave.
+
+## Linha de comando
+
+Os mesmos dados saem pelo terminal, pela mesma API e pela mesma chave (`WORTIC_API_KEY`):
+
+| Comando | O que faz |
+|---|---|
+| `wortic cnpj` | Sobe a tela e a API (o padrão) |
+| `wortic cnpj consultar <cnpj>` | A ficha da empresa |
+| `wortic cnpj socios <cnpj>` | Os sócios e administradores |
+| `wortic cnpj buscar --nome <texto> [--uf SP]` | Empresas ativas pelo nome (4 letras ou mais) |
+| `wortic cnpj validar <cnpj>` | Confere os dígitos, sem rede (aceita o CNPJ alfanumérico) |
+| `wortic cnpj lote <entrada> <saida.jsw>` | Uma ficha por CNPJ, num arquivo coluna `.jsw` |
+
+A saída é jsonW-texto. Com `--json`, sai em JSON, a forma da API. Erro vai para o stderr e o código de saída é 1; uso errado sai com 2. Um CNPJ com dígito errado nem sai da máquina.
+
+## jsonW
+
+Os dados saem em jsonW, que é o formato de dados da casa. O JSON fica na borda: a tela e a API de fora.
+
+- **Terminal:** `wortic cnpj consultar` escreve jsonW-texto (chaves sem aspas). `--json` troca pela forma da API.
+- **HTTP:** as rotas `/api/*` respondem em JSON, que é o que a tela lê. Com `Accept: text/jsonw` ou `?formato=jsonw`, a mesma resposta sai em jsonW-texto, com `content-type: text/jsonw; charset=utf-8`. A espera (`retry-after`), o mês da base (`x-base-cnpj`) e a cota são os mesmos.
+- **Lote:** `wortic cnpj lote` lê um CNPJ por linha, no formato `{cnpj:"37.853.407/0001-71"}`, e grava um `.jsw` com este esquema:
+
+```text
+cnpj:codigo,razao_social:texto?,uf:dic?,situacao:dic?,capital_social:dinheiro?,abertura:texto?,resto:qualquer?,erro:texto?
+```
+
+Os campos principais são tipados. `cnpj` é o código exato, sem pontuação. `capital_social` sai em reais (`BRL`). `abertura` fica como texto `AAAA-MM-DD`, como a Receita dá: o tipo `tempo` do jsonW é um instante em UTC, e uma data sem hora nele mudaria de dia conforme o fuso. `resto` leva o resto da ficha da API. `erro` traz o motivo quando a linha falhou; a linha que falha não derruba o lote. Linha da entrada fora do formato recusa o arquivo inteiro antes de consultar qualquer CNPJ.
 
 A API devolve a ficha de um CNPJ em JSON. Para a própria Wortic, o resumo fica assim:
 
@@ -128,6 +158,8 @@ O MCP acima é da API. Este modelo não é um servidor MCP. Agentes que leem a A
 | `GET /api/socios/{cnpj}` | Sócios da empresa |
 | `GET /api/empresas?nome=&uf=` | Empresas pelo nome, 4 letras ou mais |
 
+As rotas `/api/*` respondem em JSON. Com `Accept: text/jsonw` ou `?formato=jsonw`, respondem em jsonW-texto (veja [jsonW](#jsonw)). A tela continua em JSON.
+
 ## Ajustes
 
 | Variável | Para quê | Padrão |
@@ -141,7 +173,7 @@ O MCP acima é da API. Este modelo não é um servidor MCP. Agentes que leem a A
 ## Onde mexer
 
 - **Salvar de verdade:** o botão "Salvar cliente" guarda só na sessão do navegador. Troque o trecho do `submit` em `static/index.html` por um `POST` para o seu banco.
-- **Publicar:** `cargo build --release` gera `target/release/cadastro-cnpj`. Ponha atrás do seu proxy com HTTPS.
+- **Publicar:** `cargo build --release` gera `target/release/wortic`. Rode `wortic cnpj` atrás do seu proxy com HTTPS.
 
 ## Testes
 
@@ -149,7 +181,7 @@ O MCP acima é da API. Este modelo não é um servidor MCP. Agentes que leem a A
 cargo test
 ```
 
-Cobertura de linhas: 100% das linhas de `src/`, com 87 testes.
+Cobertura de linhas: 98,7% das linhas de `src/` (1.795 de 1.818), com 133 testes (113 unitários e 20 de binário).
 
 Cada push e cada pull request roda formatação, clippy (com o nível pedantic) e os testes no GitHub Actions. O arquivo está em `.github/workflows/ci.yml`.
 
@@ -158,12 +190,12 @@ Cada push e cada pull request roda formatação, clippy (com o nível pedantic) 
 - O modelo não grava cadastro em disco. O que você salva fica na sessão do navegador, e o cache some quando o programa para.
 - Os dados vêm da Receita Federal, pela Wortic. Podem estar desatualizados, porque a base segue a publicação mensal da Receita.
 - O CPF de sócio pessoa física sai sempre mascarado, como a API devolve.
-- **Correção ou remoção de dado:** abra uma [issue](https://github.com/developer-wortic/modelo-cadastro-cnpj-rust/issues/new/choose) no modelo "Dado errado" ou "Remoção de dado (LGPD)". Não ponha dado pessoal na issue, porque ela é pública. Para pedido de dado pessoal, use o canal da [página de privacidade](https://cnpj.wortic.com/privacidade).
+- **Correção ou remoção de dado:** abra uma [issue](https://github.com/developer-wortic/ferramentas-rust/issues/new/choose) no modelo "Dado errado" ou "Remoção de dado (LGPD)". Não ponha dado pessoal na issue, porque ela é pública. Para pedido de dado pessoal, use o canal da [página de privacidade](https://cnpj.wortic.com/privacidade).
 
 ## Perguntas frequentes
 
 **Como fazer um cadastro de clientes pelo CNPJ em Rust?**
-Rode este modelo com `cargo run --release` ou copie `src/api.rs`. Ele consulta `https://cnpj.wortic.com`, confere os dígitos antes e guarda a ficha por um dia.
+Rode este modelo com `wortic cnpj` ou copie `src/api.rs`. Ele consulta `https://cnpj.wortic.com`, confere os dígitos antes e guarda a ficha por um dia.
 
 **A consulta de CNPJ é grátis?**
 Sim. Sem cadastro e sem chave, são 60 consultas por minuto e 2.000 por dia, por IP. Os planos pagos começam em R$ 39 por mês.
@@ -200,15 +232,15 @@ Sim. O código é MIT: use, mude e venda o sistema feito a partir dele.
 
 ## Contribuir e segurança
 
-Veja [CONTRIBUTING.md](CONTRIBUTING.md) para contribuir e [SECURITY.md](SECURITY.md) para relatar falha de segurança.
+Veja [CONTRIBUTING.md](../../CONTRIBUTING.md) para contribuir e [SECURITY.md](../../SECURITY.md) para relatar falha de segurança.
 
 ## English
 
-**Customer registry by CNPJ in Rust.** A ready-to-run form that fills itself from a Brazilian company's CNPJ or name, using the open Receita Federal data through the free [cnpj.wortic.com](https://cnpj.wortic.com) API (73.8 million establishments, active and inactive). One binary with the page embedded, check digits validated locally (alphanumeric CNPJ included), a one-day in-memory cache, and handling of the 402, 429 and 403 responses. Without a key, the free use is 60 requests per minute per IP, shared by every user of a published copy, so use `WORTIC_API_KEY` in production. Run `cargo run --release`, then open http://127.0.0.1:8080. MIT licensed.
+**Customer registry by CNPJ in Rust.** A ready-to-run form that fills itself from a Brazilian company's CNPJ or name, using the open Receita Federal data through the free [cnpj.wortic.com](https://cnpj.wortic.com) API (73.8 million establishments, active and inactive). One binary with the page embedded, check digits validated locally (alphanumeric CNPJ included), a one-day in-memory cache, and handling of the 402, 429 and 403 responses. Without a key, the free use is 60 requests per minute per IP, shared by every user of a published copy, so use `WORTIC_API_KEY` in production. Build with `cargo build --release` and run `wortic cnpj`, then open http://127.0.0.1:8080. MIT licensed.
 
 ## Licença
 
-MIT. Use, mude e venda o seu sistema feito a partir deste modelo. Texto completo em [LICENSE](LICENSE).
+MIT. Use, mude e venda o seu sistema feito a partir deste modelo. Texto completo em [LICENSE](../../LICENSE).
 
 ---
 

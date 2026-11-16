@@ -74,7 +74,7 @@ pub fn colchetes(endereco: &str) -> String {
 ///
 /// Devolve a mensagem em português quando o `tiny_http` não consegue abrir a porta.
 pub fn subir(endereco: &str, porta: &str) -> Result<Arc<Server>, String> {
-    Server::http(format!("{}:{porta}", colchetes(endereco)))
+    wortic_base::http::servidor(format!("{}:{porta}", colchetes(endereco)))
         .map(Arc::new)
         .map_err(|erro| format!("não consegui abrir a porta {porta} em {endereco}: {erro}"))
 }
@@ -99,11 +99,16 @@ fn cabecalho(nome: &str, valor: &str) -> Header {
     Header::from_bytes(nome.as_bytes(), valor.as_bytes()).expect("cabeçalho válido")
 }
 
-/// Um pedido vira uma resposta de `web::rota`, com o tipo do conteúdo.
+/// Um pedido vira uma resposta de `web::rota`, com o tipo do conteúdo. O `Accept` diz se a resposta sai em jsonW.
 pub fn atender(pedido: tiny_http::Request, tem_chave: bool) {
     let url = pedido.url().to_string();
     let (caminho, consulta) = url.split_once('?').unwrap_or((url.as_str(), ""));
-    let r = web::rota(caminho, consulta, tem_chave);
+    let accept = pedido
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Accept"))
+        .map(|h| h.value.as_str().to_string());
+    let r = web::rota(caminho, consulta, accept.as_deref(), tem_chave);
     let resposta = Response::from_string(r.corpo)
         .with_status_code(r.status)
         .with_header(cabecalho("content-type", r.tipo));

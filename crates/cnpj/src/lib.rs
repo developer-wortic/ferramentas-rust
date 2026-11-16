@@ -7,13 +7,17 @@
 //!   GET /api/empresas?nome=&uf=         empresas pelo nome (4 letras ou mais)
 //!   GET /api/pro/busca?cnae=&uf=...     busca avançada (plano Pro: sem chave, nada sai daqui)
 //!   GET /api/pro/parecidas/{cnpj}       empresas parecidas (plano Pro)
-//! Rode com `cargo run --release` e abra <http://127.0.0.1:8080>.
+//! Rode com `wortic cnpj` e abra <http://127.0.0.1:8080>.
+//! Toda rota de dados responde em JSON (é o que a tela lê) ou, com `Accept: text/jsonw` ou `?formato=jsonw`, em
+//! jsonW-texto. A linha de comando (`cli`) tem `consultar`, `socios`, `buscar`, `validar` e `lote`.
 //! Variáveis: `PORTA` (padrão 8080), `ENDERECO` (padrão 127.0.0.1), `WORTIC_API_KEY` (opcional, para volume
 //! acima do uso aberto), `CADASTRO_CACHE_MAX` (padrão 5000), `CADASTRO_API_BASE` (padrão a API aberta).
 
-pub mod cli;
 mod api;
+pub mod cli;
 mod cnpj;
+pub mod lote;
+mod saida;
 #[cfg(test)]
 mod suporte;
 
@@ -21,6 +25,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::thread;
 use tiny_http::{Header, Response, Server};
+use wortic_base::Formato;
 
 const TELA: &str = include_str!("../static/index.html");
 const CAMPOS_BUSCA_NOME: &[&str] = &["nome", "uf"];
@@ -39,10 +44,14 @@ fn cabecalho(nome: &str, valor: &str) -> Header {
     Header::from_bytes(nome.as_bytes(), valor.as_bytes()).expect("cabeçalho válido")
 }
 
-fn responder_api(pedido: tiny_http::Request, r: api::Resposta) {
-    let mut resposta = Response::from_string(r.corpo)
+/// Responde uma rota no formato pedido. O JSON é o padrão (a tela o lê). Com jsonW, a mesma resposta sai em
+/// jsonW-texto, com o mesmo `retry-after`, `x-base-cnpj` e cota.
+fn responder_api(pedido: tiny_http::Request, formato: Formato, r: &api::Resposta) {
+    // borda-json: navegador (a tela recebe JSON; quem pede jsonW recebe a mesma ficha em jsonW-texto)
+    let mut resposta = Response::from_string(saida::corpo(formato, &r.corpo))
         .with_status_code(r.status)
-        .with_header(cabecalho("content-type", "application/json; charset=utf-8"));
+        .with_header(cabecalho("content-type", formato.tipo_do_corpo()))
+        .with_header(cabecalho("vary", "accept"));
     if let Some(segundos) = &r.espere {
         resposta = resposta.with_header(cabecalho("retry-after", segundos));
     }
@@ -52,11 +61,12 @@ fn responder_api(pedido: tiny_http::Request, r: api::Resposta) {
     let _ = pedido.respond(resposta);
 }
 
-fn erro(pedido: tiny_http::Request, status: u16, codigo: &str, mensagem: &str) {
+fn erro(pedido: tiny_http::Request, formato: Formato, status: u16, codigo: &str, mensagem: &str) {
     let corpo = format!(r#"{{"erro":{{"codigo":"{codigo}","mensagem":"{mensagem}"}}}}"#);
     responder_api(
         pedido,
-        api::Resposta {
+        formato,
+        &api::Resposta {
             status,
             corpo,
             espere: None,
@@ -66,13 +76,19 @@ fn erro(pedido: tiny_http::Request, status: u16, codigo: &str, mensagem: &str) {
 }
 
 /// Confere o CNPJ da rota. Sem ele válido, responde 400 e não gasta consulta.
-fn com_cnpj(pedido: tiny_http::Request, resto: &str, montar: impl FnOnce(&str) -> api::Resposta) {
+fn com_cnpj(
+    pedido: tiny_http::Request,
+    formato: Formato,
+    resto: &str,
+    montar: impl FnOnce(&str) -> api::Resposta,
+) {
     let numero = cnpj::limpar(&cnpj::sem_porcento(resto));
     if cnpj::valido(&numero) {
-        responder_api(pedido, montar(&numero));
+        responder_api(pedido, formato, &montar(&numero));
     } else {
         erro(
             pedido,
+            formato,
             400,
             "cnpj_invalido",
             "CNPJ inválido: confira os dígitos.",
@@ -102,6 +118,16 @@ fn filtrar(consulta: &str, chaves: &[&str]) -> String {
 fn atender(pedido: tiny_http::Request, api: &api::Api) {
     let url = pedido.url().to_string();
     let (caminho, consulta) = url.split_once('?').unwrap_or((url.as_str(), ""));
+    // o formato sai do Accept ou de ?formato=; ele nunca entra na consulta enviada à API (só a lista de campos passa)
+    let accept = pedido
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("accept"))
+        .map(|h| h.value.as_str().to_string());
+    let formato = Formato::do_pedido(
+        accept.as_deref(),
+        wortic_base::formato::parametro(consulta, "formato"),
+    );
     if caminho == "/" {
         let _ = pedido.respond(
             Response::from_string(TELA)
@@ -111,25 +137,38 @@ fn atender(pedido: tiny_http::Request, api: &api::Api) {
         // só diz se há chave; a chave em si nunca sai
         responder_api(
             pedido,
-            api::Resposta::ok(format!("{{\"chave\":{}}}", api.tem_chave())),
+            formato,
+            &api::Resposta::ok(format!("{{\"chave\":{}}}", api.tem_chave())),
         );
     } else if let Some(resto) = caminho.strip_prefix("/api/empresa/") {
-        com_cnpj(pedido, resto, |n| api.buscar(&format!("/cnpj/{n}")));
+        com_cnpj(pedido, formato, resto, |n| {
+            api.buscar(&format!("/cnpj/{n}"))
+        });
     } else if let Some(resto) = caminho.strip_prefix("/api/socios/") {
-        com_cnpj(pedido, resto, |n| api.buscar(&format!("/cnpj/{n}/socios")));
+        com_cnpj(pedido, formato, resto, |n| {
+            api.buscar(&format!("/cnpj/{n}/socios"))
+        });
     } else if let Some(resto) = caminho.strip_prefix("/api/pro/parecidas/") {
-        com_cnpj(pedido, resto, |n| {
+        com_cnpj(pedido, formato, resto, |n| {
             api.pro(&format!("/v1/empresas/parecidas?cnpj={n}&k=20"))
         });
     } else if caminho == "/api/pro/busca" {
         let filtros = filtrar(consulta, CAMPOS_BUSCA_PRO);
-        responder_api(pedido, api.pro(&format!("/v1/empresas/busca?{filtros}")));
+        responder_api(
+            pedido,
+            formato,
+            &api.pro(&format!("/v1/empresas/busca?{filtros}")),
+        );
     } else if caminho == "/api/empresas" {
         // só as letras, números e os sinais comuns passam adiante
         let filtros = filtrar(consulta, CAMPOS_BUSCA_NOME);
-        responder_api(pedido, api.buscar(&format!("/empresas?{filtros}")));
+        responder_api(
+            pedido,
+            formato,
+            &api.buscar(&format!("/empresas?{filtros}")),
+        );
     } else {
-        erro(pedido, 404, "nao_existe", "Rota não encontrada.");
+        erro(pedido, formato, 404, "nao_existe", "Rota não encontrada.");
     }
 }
 
@@ -162,8 +201,14 @@ fn subir(endereco: &str, porta: &str) -> Arc<Server> {
     } else {
         endereco.to_string()
     };
-    let servidor = Server::http(format!("{host}:{porta}")).expect("não consegui abrir a porta");
-    println!("Cadastro pelo CNPJ no ar em http://{host}:{porta}");
+    let servidor =
+        wortic_base::http::servidor(format!("{host}:{porta}")).expect("não consegui abrir a porta");
+    // a porta real: com PORTA=0 o sistema escolhe, e o aviso mostra a que abriu
+    let porta_real = servidor
+        .server_addr()
+        .to_ip()
+        .map_or_else(|| porta.to_string(), |a| a.port().to_string());
+    println!("Cadastro pelo CNPJ no ar em http://{host}:{porta_real}");
     Arc::new(servidor)
 }
 
@@ -210,7 +255,7 @@ pub fn principal() {
 #[cfg(test)]
 mod testes {
     use super::*;
-    use crate::suporte::{falso, pedir};
+    use crate::suporte::{falso, pedir, pedir_com};
     use std::time::Duration;
 
     const LINHAS: usize = 2;
@@ -617,5 +662,130 @@ mod testes {
         assert!(r.corpo.contains("nao_existe"));
         assert_eq!(r.tipo.as_deref(), Some("application/json; charset=utf-8"));
         assert!(f.pedidos.lock().unwrap().is_empty());
+    }
+
+    const JSONW: &str = "text/jsonw; charset=utf-8";
+
+    #[test]
+    fn accept_jsonw_devolve_a_ficha_em_jsonw_com_o_tipo_certo() {
+        let f = falso(|_| (200, b"{\"razao\":\"x\"}".to_vec(), vec![]));
+        let l = sobe(&f.base);
+        let r = pedir_com(
+            &format!("{}/api/empresa/37853407000171", l.endereco),
+            &[("accept", "text/jsonw")],
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(r.corpo, "{razao:\"x\"}");
+        assert_eq!(r.tipo.as_deref(), Some(JSONW));
+        // a consulta à API é a mesma de antes
+        assert_eq!(f.pedidos.lock().unwrap()[0].0, "/cnpj/37853407000171");
+    }
+
+    #[test]
+    fn formato_jsonw_na_consulta_vale_sem_accept() {
+        let f = falso(|_| (200, b"{\"razao\":\"x\"}".to_vec(), vec![]));
+        let l = sobe(&f.base);
+        let r = pedir(&format!(
+            "{}/api/empresa/37853407000171?formato=jsonw",
+            l.endereco
+        ));
+        assert_eq!(r.corpo, "{razao:\"x\"}");
+        assert_eq!(r.tipo.as_deref(), Some(JSONW));
+    }
+
+    #[test]
+    fn sem_pedido_a_resposta_segue_em_json_igual_a_antes() {
+        let f = falso(|_| (200, b"{\"razao\":\"x\"}".to_vec(), vec![]));
+        let l = sobe(&f.base);
+        let r = pedir_com(
+            &format!("{}/api/empresa/37853407000171", l.endereco),
+            &[("accept", "text/html,*/*;q=0.8")],
+        );
+        assert_eq!(r.corpo, "{\"razao\":\"x\"}");
+        assert_eq!(r.tipo.as_deref(), Some("application/json; charset=utf-8"));
+    }
+
+    #[test]
+    fn formato_nao_vaza_para_a_api_na_busca_por_nome() {
+        let f = falso(|_| (200, b"[]".to_vec(), vec![]));
+        let l = sobe(&f.base);
+        pedir(&format!(
+            "{}/api/empresas?nome=padaria&uf=SP&formato=jsonw",
+            l.endereco
+        ));
+        assert_eq!(
+            f.pedidos.lock().unwrap()[0].0,
+            "/empresas?nome=padaria&uf=SP"
+        );
+    }
+
+    #[test]
+    fn formato_nao_entra_na_busca_pro_nem_na_lista_de_campos() {
+        let f = falso(|_| (200, b"{\"empresas\":[]}".to_vec(), vec![]));
+        let l = sobe_com(&f.base, Some("segredo".to_string()));
+        let r = pedir_com(
+            &format!("{}/api/pro/busca?cnae=6202300&formato=jsonw", l.endereco),
+            &[("accept", "text/jsonw")],
+        );
+        assert_eq!(r.corpo, "{empresas:[]}");
+        assert_eq!(
+            f.pedidos.lock().unwrap()[0].0,
+            "/v1/empresas/busca?cnae=6202300"
+        );
+    }
+
+    #[test]
+    fn erro_do_servidor_tambem_sai_em_jsonw() {
+        let f = falso(|_| (200, b"{}".to_vec(), vec![]));
+        let l = sobe(&f.base);
+        let r = pedir_com(
+            &format!("{}/api/empresa/37853407000172", l.endereco),
+            &[("accept", "text/jsonw")],
+        );
+        assert_eq!(r.status, 400);
+        assert_eq!(
+            r.corpo,
+            "{erro:{codigo:\"cnpj_invalido\",mensagem:\"CNPJ inválido: confira os dígitos.\"}}"
+        );
+        assert_eq!(r.tipo.as_deref(), Some(JSONW));
+        assert!(f.pedidos.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn limite_da_api_em_jsonw_leva_a_espera_e_o_status() {
+        let f = falso(|_| (429, b"muitas".to_vec(), vec![("retry-after", "45")]));
+        let l = sobe(&f.base);
+        let r = pedir_com(
+            &format!("{}/api/socios/37853407000171", l.endereco),
+            &[("accept", "text/jsonw")],
+        );
+        assert_eq!(r.status, 429);
+        assert_eq!(r.espere.as_deref(), Some("45"));
+        assert!(r.corpo.contains("codigo:\"limite\""));
+        assert!(r.corpo.contains("espere:45"));
+    }
+
+    #[test]
+    fn corpo_da_api_que_nao_e_json_vira_erro_jsonw_com_o_status_original() {
+        let f = falso(|_| (503, b"manutencao".to_vec(), vec![]));
+        let l = sobe(&f.base);
+        let r = pedir_com(
+            &format!("{}/api/empresa/37853407000171", l.endereco),
+            &[("accept", "text/jsonw")],
+        );
+        assert_eq!(r.status, 503);
+        assert!(r.corpo.starts_with("{erro:{codigo:\"resposta_invalida\""));
+    }
+
+    #[test]
+    fn config_em_jsonw_e_a_chave_continua_fora() {
+        let f = falso(|_| (200, b"{}".to_vec(), vec![]));
+        let l = sobe_com(&f.base, Some("segredo-123".to_string()));
+        let r = pedir_com(
+            &format!("{}/api/config", l.endereco),
+            &[("accept", "text/jsonw")],
+        );
+        assert_eq!(r.corpo, "{chave:true}");
+        assert!(!r.corpo.contains("segredo"));
     }
 }

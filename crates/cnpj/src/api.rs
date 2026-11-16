@@ -6,16 +6,18 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use serde_json::Value; // borda-json: API cnpj.wortic.com (lê o erro que a API manda, para o texto do terminal)
+
 const BASE: &str = "https://cnpj.wortic.com";
 const TEMPO: Duration = Duration::from_secs(10);
-const GUARDA: Duration = Duration::from_hours(24);
+const GUARDA: Duration = Duration::from_secs(24 * 60 * 60);
 /// Quantas respostas ficam guardadas. Passou disso, sai a mais antiga.
 const CACHE_MAX: usize = 5000;
 /// Onde se assina o plano e se pega a chave.
 pub const PLANOS: &str = "https://cnpj.wortic.com/#planos";
 const SEM_REDE: &str =
     r#"{"erro":{"codigo":"sem_rede","mensagem":"Não consegui falar com a API agora."}}"#;
-const RESPOSTA_INVALIDA: &str = r#"{"erro":{"codigo":"resposta_invalida","mensagem":"A API respondeu algo que não consegui ler."}}"#;
+pub const RESPOSTA_INVALIDA: &str = r#"{"erro":{"codigo":"resposta_invalida","mensagem":"A API respondeu algo que não consegui ler."}}"#;
 const MSG_LIMITE_GRATIS: &str = "Passou do limite grátis da API: 60 consultas por minuto ou 2.000 por dia, por IP. Espere o tempo indicado ou assine um plano.";
 const MSG_PLANO_PRO: &str =
     "Esta função é do plano Pro. Para usar, defina WORTIC_API_KEY com a chave do plano.";
@@ -140,6 +142,7 @@ impl Api {
         match pedido.call() {
             Ok(r) => {
                 let base = base_valida(r.header("x-base-cnpj"));
+                // borda-json: API cnpj.wortic.com (o corpo chega como texto e segue assim para a guarda)
                 match r.into_string() {
                     Ok(corpo) => {
                         self.guardar(caminho, &corpo, base.as_deref());
@@ -224,6 +227,44 @@ fn so_digitos(valor: Option<&str>) -> Option<String> {
     valor
         .filter(|v| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit()))
         .map(str::to_string)
+}
+
+/// Escapa um valor de consulta: `%XX` para o que não é letra, número ou `-_.~`. A linha de comando usa para o nome.
+#[must_use]
+pub fn codificar(valor: &str) -> String {
+    valor
+        .bytes()
+        .map(|b| match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                char::from(b).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// O texto de um erro da API para o terminal: a mensagem, o tempo de espera e o link dos planos, quando a API manda.
+#[must_use]
+pub fn descrever_erro(r: &Resposta) -> String {
+    // borda-json: API cnpj.wortic.com (o erro vem com `erro.mensagem`, `erro.link`)
+    let erro = serde_json::from_str::<Value>(&r.corpo)
+        .ok()
+        .and_then(|v| v.get("erro").cloned());
+    let campo = |nome: &str| {
+        erro.as_ref()
+            .and_then(|e| e.get(nome))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let mut texto =
+        campo("mensagem").unwrap_or_else(|| format!("A API respondeu com erro {}.", r.status));
+    if let Some(segundos) = &r.espere {
+        texto = format!("{texto} Tente de novo em {segundos} s.");
+    }
+    if let Some(link) = campo("link") {
+        texto = format!("{texto} Planos: {link}");
+    }
+    texto
 }
 
 /// O código de erro do corpo da API (`"codigo":"..."`), só se for minúsculas e `_`.
@@ -735,5 +776,54 @@ mod testes {
         let r = api_para(&format!("http://{porta}")).buscar("/cnpj/1");
         assert_eq!(r.status, 502);
         assert_eq!(r.corpo, SEM_REDE);
+    }
+
+    #[test]
+    fn codificar_escapa_o_que_nao_e_seguro_na_consulta() {
+        assert_eq!(codificar("padaria x"), "padaria%20x");
+        assert_eq!(codificar("Ação"), "A%C3%A7%C3%A3o");
+        assert_eq!(codificar("a-b_c.d~e"), "a-b_c.d~e");
+        assert_eq!(codificar("a&b=c"), "a%26b%3Dc");
+        assert_eq!(codificar(""), "");
+    }
+
+    #[test]
+    fn descrever_erro_junta_mensagem_espera_e_link() {
+        let r = Resposta {
+            status: 402,
+            corpo: erro_json(
+                "limite_gratis",
+                "Passou do limite.",
+                Some("37"),
+                Some(PLANOS),
+            ),
+            espere: Some("37".to_string()),
+            base: None,
+        };
+        assert_eq!(
+            descrever_erro(&r),
+            "Passou do limite. Tente de novo em 37 s. Planos: https://cnpj.wortic.com/#planos"
+        );
+    }
+
+    #[test]
+    fn descrever_erro_sem_mensagem_do_json_diz_o_status() {
+        let r = Resposta {
+            status: 503,
+            corpo: "manutencao".to_string(),
+            espere: None,
+            base: None,
+        };
+        assert_eq!(descrever_erro(&r), "A API respondeu com erro 503.");
+        let sem_mensagem = Resposta {
+            status: 500,
+            corpo: r#"{"erro":{"codigo":"x"}}"#.to_string(),
+            espere: None,
+            base: None,
+        };
+        assert_eq!(
+            descrever_erro(&sem_mensagem),
+            "A API respondeu com erro 500."
+        );
     }
 }
