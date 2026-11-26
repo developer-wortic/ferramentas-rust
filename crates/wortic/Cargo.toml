@@ -1,0 +1,25 @@
+[package]
+name = "wortic"
+description = "Ferramentas Wortic num binário só: `wortic cnpj`, `wortic chatbot`, `wortic pix` e `wortic rastreio`, com jsonW em tudo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "wortic"
+path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true
+wortic-base.workspace = true
+cadastro-cnpj.workspace = true
+chatbot-prospeccao.workspace = true
+pix-brcode.workspace = true
+rastreio-capi.workspace = true
+
+[dev-dependencies]
+tiny_http.workspace = true
+ureq.workspace = true

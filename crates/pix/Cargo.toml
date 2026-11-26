@@ -1,0 +1,14 @@
+[package]
+name = "pix-brcode"
+description = "Ferramentas Wortic: BR Code do Pix estático (monta, lê, confere chaves e gera o QR), sem rede e sem banco (subcomando `wortic pix`)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+wortic-base.workspace = true
+qrcodegen.workspace = true
+tiny_http.workspace = true

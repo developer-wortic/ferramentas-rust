@@ -1,0 +1,23 @@
+[package]
+name = "rastreio-capi"
+description = "Ferramentas Wortic: rastreio de campanhas (UTM, fbclid, gclid, ttclid, msclkid) e Conversions API da Meta (subcomando `wortic rastreio`)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "rastreio_capi"
+path = "src/lib.rs"
+
+[dependencies]
+wortic-base.workspace = true
+base64.workspace = true
+hmac.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tiny_http.workspace = true
+ureq.workspace = true

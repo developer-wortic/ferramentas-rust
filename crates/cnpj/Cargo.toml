@@ -1,0 +1,15 @@
+[package]
+name = "cadastro-cnpj"
+description = "Ferramentas Wortic: cadastro de clientes que se preenche pelo CNPJ, com a API aberta cnpj.wortic.com (subcomando `wortic cnpj`)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+wortic-base.workspace = true
+tiny_http.workspace = true
+ureq.workspace = true
+serde_json.workspace = true

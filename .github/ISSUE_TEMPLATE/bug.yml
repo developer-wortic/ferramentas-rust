@@ -1,0 +1,59 @@
+name: "Bug"
+description: "Alguma ferramenta não funciona como deveria"
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reportar. Antes de abrir, rode `cargo test` e veja se a falha aparece.
+        Use só dados de exemplo (`contato@exemplo.com.br`, `LOJA EXEMPLO`, CNPJ de exemplo).
+  - type: dropdown
+    id: ferramenta
+    attributes:
+      label: Ferramenta
+      options:
+        - wortic cnpj
+        - wortic chatbot
+        - wortic pix
+        - wortic rastreio
+        - base (jsonW, configuração, binário wortic)
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como reproduzir
+      description: Passos curtos, do início até o erro. Use dados de exemplo.
+      placeholder: |
+        1. wortic pix
+        2. Abra http://127.0.0.1:8080
+        3. Digite a chave de exemplo contato@exemplo.com.br
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: O que você esperava
+    validations:
+      required: true
+  - type: textarea
+    id: ocorreu
+    attributes:
+      label: O que aconteceu
+      description: Cole a mensagem de erro ou a saída, sem chave, token ou dado pessoal real.
+    validations:
+      required: true
+  - type: input
+    id: versao
+    attributes:
+      label: Versão
+      description: Saída de `wortic versao` e de `rustc --version`
+      placeholder: "wortic 2.0.0 (libjsonw 1.4.2), rustc 1.100.0"
+  - type: checkboxes
+    id: privacidade
+    attributes:
+      label: Confirmação
+      options:
+        - label: Não coloquei chave de API, token, chave Pix, CPF, CNPJ, telefone ou e-mail real neste relato.
+          required: true

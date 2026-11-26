@@ -1,0 +1,23 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Segurança
+    url: https://github.com/developer-wortic/ferramentas-rust/security/advisories/new
+    about: Falha de segurança entra por aqui, em privado. Veja o arquivo SECURITY.md.
+  - name: Planos da Wortic (funções pagas)
+    url: https://wortic.com.br/planos
+    about: WhatsApp oficial, CRM, filas, Pix dinâmico com confirmação, conciliação, busca avançada de empresas.
+  - name: "cnpj: documentação da API"
+    url: https://cnpj.wortic.com/docs
+    about: A API aberta que o `wortic cnpj` consulta.
+  - name: "cnpj: privacidade e pedido de dado pessoal"
+    url: https://cnpj.wortic.com/privacidade
+    about: Correção ou remoção de dado pessoal da base de CNPJ.
+  - name: "pix: Manual de Padrões do Pix (Banco Central)"
+    url: https://www.bcb.gov.br/estabilidadefinanceira/pix
+    about: Página oficial do Pix, com o manual do BR Code e as regras de iniciação.
+  - name: "rastreio: documentação da Conversions API da Meta"
+    url: https://developers.facebook.com/docs/marketing-api/conversions-api
+    about: O que a Meta aceita em cada evento.
+  - name: "jsonW: o formato de dados"
+    url: https://jsonw.org
+    about: Especificação, ferramenta wjsw e SDKs do jsonW (repositório developer-wortic/jsonw).
